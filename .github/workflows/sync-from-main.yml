@@ -16,7 +16,7 @@ jobs:
     - name: Checkout E3 Automation Repository
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.MAIN_REPO_TOKEN }}
         
     - name: Checkout Main Repository
       uses: actions/checkout@v4
@@ -80,4 +80,4 @@ jobs:
           --notes "Automated sync from main repository. Updated files: Wire numbering script, Documentation, Dependencies" \
           --latest
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.MAIN_REPO_TOKEN }}
