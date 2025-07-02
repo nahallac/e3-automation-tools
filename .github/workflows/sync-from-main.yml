@@ -65,18 +65,19 @@ jobs:
         
     - name: Create Release on Major Changes
       if: steps.changes.outputs.changed == 'true'
-      uses: actions/create-release@v1
+      run: |
+        # Create a tag and release
+        TAG_NAME="auto-sync-$(date +%Y%m%d-%H%M%S)"
+        RELEASE_NAME="Auto-sync $(date +%Y-%m-%d)"
+
+        # Create tag
+        git tag "$TAG_NAME"
+        git push origin "$TAG_NAME"
+
+        # Create release using GitHub CLI
+        gh release create "$TAG_NAME" \
+          --title "$RELEASE_NAME" \
+          --notes "Automated sync from main repository. Updated files: Wire numbering script, Documentation, Dependencies" \
+          --latest
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: auto-sync-$(date +%Y%m%d-%H%M%S)
-        release_name: Auto-sync $(date +%Y-%m-%d)
-        body: |
-          Automated sync from main repository.
-          
-          Updated files:
-          - Wire numbering script
-          - Documentation
-          - Dependencies
-        draft: false
-        prerelease: false
