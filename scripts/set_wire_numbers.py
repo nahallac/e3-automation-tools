@@ -13,8 +13,8 @@ signals share the same base wire number (same grid position), letter
 suffixes (.A, .B, .C, etc.) are assigned based on left-to-right position.
 
 Author: Jonathan Callahan
+Version: 1.1 - Auto-sync test
 Date: 2025-01-01
-
 """
 
 import win32com.client
