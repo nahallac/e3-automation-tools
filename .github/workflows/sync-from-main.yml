@@ -1,0 +1,82 @@
+name: Sync from Main Repository
+
+on:
+  # Trigger when specific files are changed in the main repository
+  repository_dispatch:
+    types: [sync-e3-tools]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  sync-files:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout E3 Automation Repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Checkout Main Repository
+      uses: actions/checkout@v4
+      with:
+        repository: nahallac/work-scripts
+        token: ${{ secrets.MAIN_REPO_TOKEN }}
+        path: main-repo
+        
+    - name: Copy Wire Numbering Script
+      run: |
+        cp main-repo/apps/set_wire_numbers.py scripts/
+        
+    - name: Copy Wire Numbering Documentation
+      run: |
+        cp main-repo/README_wire_numbering.md docs/wire_numbering.md
+        
+    - name: Copy Test Script
+      run: |
+        cp main-repo/apps/test_unique_wire_numbers.py scripts/
+        
+    - name: Update Requirements if Changed
+      run: |
+        # Extract only the relevant dependencies from main repo
+        echo "# E3.series Automation Tools Dependencies" > requirements.txt
+        echo "" >> requirements.txt
+        echo "# Core Windows COM interface for E3.series" >> requirements.txt
+        grep "pywin32" main-repo/requirements.txt >> requirements.txt || echo "pywin32==306" >> requirements.txt
+        
+    - name: Check for Changes
+      id: changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .
+        if git diff --staged --quiet; then
+          echo "changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "changed=true" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Commit and Push Changes
+      if: steps.changes.outputs.changed == 'true'
+      run: |
+        git commit -m "Auto-sync from main repository: $(date)"
+        git push
+        
+    - name: Create Release on Major Changes
+      if: steps.changes.outputs.changed == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: auto-sync-$(date +%Y%m%d-%H%M%S)
+        release_name: Auto-sync $(date +%Y-%m-%d)
+        body: |
+          Automated sync from main repository.
+          
+          Updated files:
+          - Wire numbering script
+          - Documentation
+          - Dependencies
+        draft: false
+        prerelease: false

@@ -1,0 +1,10 @@
+# E3.series Automation Tools Dependencies
+
+# Core Windows COM interface for E3.series
+pywin32==306
+
+# Future GUI dependencies (when GUI is implemented)
+# customtkinter==5.2.1
+
+# Development and testing
+# pytest==7.4.0

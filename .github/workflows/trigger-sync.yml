@@ -1,0 +1,31 @@
+# This workflow would go in your MAIN repository (.github/workflows/)
+# It triggers the sync when E3-related files are modified
+
+name: Trigger E3 Tools Sync
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'apps/set_wire_numbers.py'
+      - 'apps/test_unique_wire_numbers.py'
+      - 'README_wire_numbering.md'
+      - 'requirements.txt'
+
+jobs:
+  trigger-sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Trigger Sync in E3 Automation Repository
+      uses: peter-evans/repository-dispatch@v2
+      with:
+        token: ${{ secrets.E3_REPO_TOKEN }}
+        repository: nahallac/e3-automation-tools
+        event-type: sync-e3-tools
+        client-payload: |
+          {
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "changed_files": "${{ github.event.head_commit.modified }}"
+          }
