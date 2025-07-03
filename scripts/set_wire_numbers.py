@@ -13,6 +13,7 @@ signals share the same base wire number (same grid position), letter
 suffixes (.A, .B, .C, etc.) are assigned based on left-to-right position.
 
 Author: Jonathan Callahan
+Version: 1.1 - Auto-sync test
 Date: 2025-01-01
 """
 
@@ -40,7 +41,7 @@ class WireNumberAssigner:
         self.signal = None
         self.net = None
         self.net_segment = None
-
+        
     def connect_to_e3(self):
         """Connect to the open E3 application"""
         try:
@@ -57,7 +58,7 @@ class WireNumberAssigner:
         except Exception as e:
             logging.error(f"Failed to connect to E3: {e}")
             return False
-
+    
     def get_pin_location_info(self, pin_id):
         """Get location information for a pin"""
         try:
@@ -104,7 +105,7 @@ class WireNumberAssigner:
         except Exception as e:
             logging.error(f"Error getting pin location for pin {pin_id}: {e}")
             return None, None, None, None, None
-
+    
     def extract_grid_position(self, grid_desc, column, row):
         """Extract grid position from grid description or column/row"""
         try:
@@ -112,23 +113,23 @@ class WireNumberAssigner:
             if grid_desc and "." in grid_desc:
                 grid_part = grid_desc.split(".")[-1]
                 return grid_part
-
+            
             # If we have column and row, combine them
             if column and row:
                 return f"{column}{row}"
-
+            
             # Fallback to just column or row if available
             if column:
                 return column
             if row:
                 return row
-
+                
             return "UNKNOWN"
-
+            
         except Exception as e:
             logging.error(f"Error extracting grid position: {e}")
             return "UNKNOWN"
-
+    
     def calculate_wire_number(self, page_number, grid_position):
         """Calculate wire number from page and grid position"""
         try:
@@ -137,15 +138,15 @@ class WireNumberAssigner:
                 page_num = "0"
             else:
                 page_num = str(page_number).strip()
-
+            
             # Format: page_number + grid_position
             wire_number = f"{page_num}{grid_position}"
             return wire_number
-
+            
         except Exception as e:
             logging.error(f"Error calculating wire number: {e}")
             return "ERROR"
-
+    
     def get_connection_wire_numbers_and_positions(self, connection_id):
         """Get potential wire numbers and positions for both ends of a connection"""
         try:
@@ -199,17 +200,17 @@ class WireNumberAssigner:
         """Get potential wire numbers for both ends of a connection (backward compatibility)"""
         wire_data = self.get_connection_wire_numbers_and_positions(connection_id)
         return [data['wire_number'] for data in wire_data]
-
+    
     def get_lowest_wire_number(self, wire_numbers):
         """Get the lowest wire number from a list"""
         if not wire_numbers:
             return None
-
+        
         # Sort wire numbers to get the lowest one
         # This will sort lexicographically, which should work for most cases
         sorted_numbers = sorted(wire_numbers)
         return sorted_numbers[0]
-
+    
 
     def get_net_segments_for_connection(self, connection_id):
         """Get all net segment IDs for a given connection"""
@@ -375,24 +376,24 @@ class WireNumberAssigner:
 
         except Exception as e:
             logging.error(f"Error processing connections: {e}")
-
+    
     def run(self):
         """Main execution method"""
         logging.info("Starting wire number assignment process")
-
+        
         if not self.connect_to_e3():
             logging.error("Failed to connect to E3. Make sure E3 is running with a project open.")
             return False
-
+        
         try:
             self.process_connections()
             logging.info("Wire number assignment completed successfully")
             return True
-
+            
         except Exception as e:
             logging.error(f"Error during wire number assignment: {e}")
             return False
-
+        
         finally:
             # Clean up COM objects
             self.app = None
@@ -408,7 +409,7 @@ def main():
     """Main function"""
     assigner = WireNumberAssigner()
     success = assigner.run()
-
+    
     if success:
         print("Wire number assignment completed successfully!")
         print("Check the log file 'wire_numbering.log' for details.")
