@@ -65,7 +65,14 @@ For issues, questions, or feature requests, please open an issue on GitHub.
 
 ## License
 
-MIT License - see LICENSE file for details.
+This work is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License.
+
+You are free to share and adapt this work, but you must:
+- Give appropriate credit to the original author
+- Indicate if changes were made
+- Distribute any derivative works under the same license
+
+See the LICENSE file for full details.
 
 ## Author
 
