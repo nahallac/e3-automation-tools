@@ -15,13 +15,11 @@ The wire number format is: `{page_number}{grid_position}`
 
 - **Lowest wire number selection**: For connections with multiple ends, the end that results in the lowest wire number is used
 - **Signal-based unique numbering**: Each signal gets a unique wire number, with ALL segments and connections of the same signal receiving the same wire number. Letter suffixes (.A, .B, .C, etc.) are assigned left-to-right based on X coordinate when multiple signals share the same base wire number
-- **Automatic attribute detection**: Tries multiple common wire number attribute names
 - **Comprehensive logging**: Detailed logging of all operations and errors
 
 ## Files
 
 - `set_wire_numbers.py` - Main script that performs the wire number assignment
-- `test_wire_numbers.py` - Test script to verify E3 connection and display project information
 - `README_wire_numbering.md` - This documentation file
 
 ## Prerequisites
@@ -47,21 +45,8 @@ The wire number format is: `{page_number}{grid_position}`
 
 ## Usage
 
-### Step 1: Test Connection (Recommended)
 
-Before running the main script, test your E3 connection:
-
-```bash
-python test_wire_numbers.py
-```
-
-This will:
-- Verify connection to E3
-- Display project information
-- Show sample connection and pin data
-- Test attribute access capabilities
-
-### Step 2: Run Wire Number Assignment
+### Step : Run Wire Number Assignment
 
 Once the test is successful, run the main script:
 
@@ -133,15 +118,6 @@ If signals have the same X coordinate, they are sorted by Y coordinate (top-to-b
 
 This ensures that every signal in the project has a completely unique wire number, and the letter suffixes follow a logical left-to-right progression across the schematic page.
 
-## Attribute Names
-
-The script attempts to set wire numbers using these attribute names (in order):
-1. `Wire number`
-2. `WIRE_NUMBER`
-3. `WireNumber`
-4. `Wire_Number`
-
-The first successful attribute name is used for all connections.
 
 ## Logging
 
@@ -237,7 +213,6 @@ The script properly manages COM objects by:
 For issues or questions:
 1. Check the log file for detailed error information
 2. Verify E3 project structure and attribute definitions
-3. Test with the provided test script first
 4. Ensure all prerequisites are met
 
 ## License
