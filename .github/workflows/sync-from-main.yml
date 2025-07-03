@@ -33,10 +33,7 @@ jobs:
       run: |
         cp main-repo/README_wire_numbering.md docs/wire_numbering.md
         
-    - name: Copy Test Script
-      run: |
-        cp main-repo/apps/test_unique_wire_numbers.py scripts/
-        
+       
     - name: Update Requirements if Changed
       run: |
         # Extract only the relevant dependencies from main repo
