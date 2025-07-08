@@ -26,7 +26,8 @@ The wire number format is: `{page_number}{grid_position}`
 
 1. **E3.series** must be installed and running
 2. **Python** with the following packages:
-   - `win32com.client` (pywin32)
+   - `e3series` (modern E3.series Python wrapper)
+   - `pywin32` (legacy COM interface, kept for compatibility)
    - `logging` (built-in)
    - `sys` (built-in)
    - `collections` (built-in)
@@ -39,7 +40,7 @@ The wire number format is: `{page_number}{grid_position}`
 1. Ensure E3.series is installed and running
 2. Install Python dependencies:
    ```bash
-   pip install pywin32
+   pip install e3series pywin32
    ```
 3. Copy the script files to your desired location
 

@@ -14,9 +14,10 @@ suffixes (.A, .B, .C, etc.) are assigned based on left-to-right position.
 
 Author: Jonathan Callahan
 Date: 2025-01-01
+Updated: 2025-01-08 - Migrated to use e3series PyPI package instead of win32com.client
 """
 
-import win32com.client
+import e3series
 import logging
 import sys
 
@@ -44,7 +45,8 @@ class WireNumberAssigner:
     def connect_to_e3(self):
         """Connect to the open E3 application"""
         try:
-            self.app = win32com.client.GetActiveObject("CT.Application")
+            # Connect to the active E3.series application
+            self.app = e3series.Application()
             self.job = self.app.CreateJobObject()
             self.connection = self.job.CreateConnectionObject()
             self.pin = self.job.CreatePinObject()
@@ -52,7 +54,7 @@ class WireNumberAssigner:
             self.signal = self.job.CreateSignalObject()
             self.net = self.job.CreateNetObject()
             self.net_segment = self.job.CreateNetSegmentObject()
-            logging.info("Successfully connected to E3 application")
+            logging.info("Successfully connected to E3 application using e3series library")
             return True
         except Exception as e:
             logging.error(f"Failed to connect to E3: {e}")
@@ -394,7 +396,7 @@ class WireNumberAssigner:
             return False
         
         finally:
-            # Clean up COM objects
+            # Clean up E3.series objects
             self.app = None
             self.job = None
             self.connection = None
