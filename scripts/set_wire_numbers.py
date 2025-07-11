@@ -12,9 +12,13 @@ belonging to the same signal receive the same wire number. When multiple
 signals share the same base wire number (same grid position), letter
 suffixes (.A, .B, .C, etc.) are assigned based on left-to-right position.
 
+Connections with the "FixWireName" net attribute set will be skipped and
+their wire numbers will not be modified.
+
 Author: Jonathan Callahan
 Date: 2025-01-01
 Updated: 2025-01-08 - Migrated to use e3series PyPI package instead of win32com.client
+Updated: 2025-01-11 - Added support for FixWireName attribute to skip connections
 """
 
 import e3series
@@ -241,6 +245,32 @@ class WireNumberAssigner:
             logging.error(f"Error getting net segments for connection {connection_id}: {e}")
             return []
 
+    def has_fix_wire_name_attribute(self, connection_id):
+        """Check if the net for this connection has the FixWireName attribute set"""
+        try:
+            self.connection.SetId(connection_id)
+            net_id = self.connection.GetNetId()
+
+            # Check if we got a valid net ID
+            if net_id <= 0:
+                logging.debug(f"Connection {connection_id} has no valid net ID ({net_id}) - processing normally")
+                return False
+
+            # Set the net object to this net and check for FixWireName attribute
+            self.net.SetId(net_id)
+            fix_wire_name = self.net.GetAttributeValue("FixWireName")
+
+            # Check if the attribute exists and has a truthy value
+            if fix_wire_name and str(fix_wire_name).strip().lower() not in ['', '0', 'false', 'no']:
+                logging.debug(f"Connection {connection_id} has FixWireName attribute set to '{fix_wire_name}' on net {net_id} - skipping")
+                return True
+
+            return False
+
+        except Exception as e:
+            logging.error(f"Error checking FixWireName attribute for connection {connection_id}: {e}")
+            return False
+
     def process_connections(self):
         """Process all connections in the project"""
         try:
@@ -279,6 +309,11 @@ class WireNumberAssigner:
                     continue
 
                 try:
+                    # Check if this connection has the FixWireName attribute set
+                    if self.has_fix_wire_name_attribute(conn_id):
+                        logging.info(f"Skipping connection {conn_id} - has FixWireName attribute set")
+                        continue
+
                     self.connection.SetId(conn_id)
                     signal_name = self.connection.GetSignalName()
 

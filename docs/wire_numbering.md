@@ -15,11 +15,13 @@ The wire number format is: `{page_number}{grid_position}`
 
 - **Lowest wire number selection**: For connections with multiple ends, the end that results in the lowest wire number is used
 - **Signal-based unique numbering**: Each signal gets a unique wire number, with ALL segments and connections of the same signal receiving the same wire number. Letter suffixes (.A, .B, .C, etc.) are assigned left-to-right based on X coordinate when multiple signals share the same base wire number
+- **FixWireName attribute support**: Connections whose nets have the "FixWireName" attribute set are automatically skipped and their wire numbers remain unchanged
 - **Comprehensive logging**: Detailed logging of all operations and errors
 
 ## Files
 
 - `set_wire_numbers.py` - Main script that performs the wire number assignment
+- `test_fix_wire_name.py` - Test script to verify FixWireName attribute functionality
 - `README_wire_numbering.md` - This documentation file
 
 ## Prerequisites
@@ -152,6 +154,45 @@ Common issues and solutions:
 - Some pins may not be placed on schematic sheets
 - This is normal for certain types of connections
 - These connections will be skipped
+
+## FixWireName Attribute
+
+The script supports the "FixWireName" net attribute to exclude specific connections from automatic wire number assignment. This is useful when you have manually assigned wire numbers that should not be changed.
+
+### How to Use
+
+1. **In E3.series**: Select the net you want to protect
+2. **Set the attribute**: Add a net attribute called "FixWireName" with any non-empty value (e.g., "1", "true", "yes")
+3. **Run the script**: The script will automatically detect and skip all connections on this net
+
+### Attribute Values
+
+The script will skip connections if the "FixWireName" attribute is set to any value except:
+- Empty string (`""`)
+- `"0"`
+- `"false"` (case-insensitive)
+- `"no"` (case-insensitive)
+
+### Example
+
+If you have a net with wire number "POWER_24V" that should never be changed:
+1. Select the net in E3
+2. Add attribute: `FixWireName = "1"`
+3. The script will skip all connections on this net and preserve "POWER_24V"
+
+### Testing FixWireName Functionality
+
+To test which connections in your project have the FixWireName attribute set:
+
+```bash
+python test_fix_wire_name.py
+```
+
+This test script will:
+- Connect to your open E3 project
+- Check the first 10 connections for the FixWireName attribute
+- Report which connections would be skipped during wire numbering
+- Generate a detailed log file `test_fix_wire_name.log`
 
 ## Customization
 
