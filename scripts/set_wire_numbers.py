@@ -16,9 +16,9 @@ Connections with the "FixWireName" net attribute set will be skipped and
 their wire numbers will not be modified.
 
 Author: Jonathan Callahan
-Date: 2025-01-01
-Updated: 2025-01-08 - Migrated to use e3series PyPI package instead of win32com.client
-Updated: 2025-01-11 - Added support for FixWireName attribute to skip connections
+Date: 2025-07-01
+Updated: 2025-07-08 - Migrated to use e3series PyPI package instead of win32com.client
+Updated: 2025-07-11 - Added support for FixWireName attribute to skip connections
 """
 
 import e3series
