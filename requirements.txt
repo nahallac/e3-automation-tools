@@ -1,4 +1,7 @@
 # E3.series Automation Tools Dependencies
 
-# Core Windows COM interface for E3.series
+# Modern Python wrapper for E3.series COM interface
+e3series
+
+# Legacy Windows COM interface (kept for compatibility)
 pywin32==306

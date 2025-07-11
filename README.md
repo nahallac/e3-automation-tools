@@ -17,7 +17,7 @@ A collection of automation scripts for E3.series electrical design software, foc
 - E3.series software installed and running
 - Python 3.7+ with the following packages:
   ```bash
-  pip install pywin32
+  pip install e3series pywin32
   ```
 - An open E3 project
 
