@@ -6,7 +6,8 @@ This script reads through the current open E3 project and for every connection,
 calculates wire numbers based on page number and grid/ladder position, then
 sets the "Wire number" attribute on the corresponding net segments.
 The wire number format is: {page_number}{grid_position}
-The end that results in the lowest wire number is used.
+The end that results in the lowest wire number is used, with proper numeric
+sorting that considers both page numbers and grid positions numerically.
 Each signal gets a unique wire number, and ALL segments and connections
 belonging to the same signal receive the same wire number. When multiple
 signals share the same base wire number (same grid position), letter
@@ -19,6 +20,7 @@ Author: Jonathan Callahan
 Date: 2025-07-01
 Updated: 2025-07-08 - Migrated to use e3series PyPI package instead of win32com.client
 Updated: 2025-07-11 - Added support for FixWireName attribute to skip connections
+Updated: 2025-07-11 - Fixed wire number sorting to properly consider both page and grid numerically
 """
 
 import e3series
@@ -118,22 +120,77 @@ class WireNumberAssigner:
             if grid_desc and "." in grid_desc:
                 grid_part = grid_desc.split(".")[-1]
                 return grid_part
-            
+
             # If we have column and row, combine them
             if column and row:
                 return f"{column}{row}"
-            
+
             # Fallback to just column or row if available
             if column:
                 return column
             if row:
                 return row
-                
+
             return "UNKNOWN"
-            
+
         except Exception as e:
             logging.error(f"Error extracting grid position: {e}")
             return "UNKNOWN"
+
+    def wire_number_sort_key(self, wire_num):
+        """Create a sort key that handles numeric page and grid comparison"""
+        try:
+            # Extract page and grid parts from wire number
+            # Wire number format is: {page_number}{grid_position}
+            # We need to separate numeric page from alphanumeric grid
+
+            # Find where the page number ends and grid starts
+            # Page should be numeric, grid can be alphanumeric
+            page_part = ""
+            grid_part = ""
+
+            i = 0
+            # Extract numeric page part
+            while i < len(wire_num) and wire_num[i].isdigit():
+                page_part += wire_num[i]
+                i += 1
+
+            # Rest is grid part
+            grid_part = wire_num[i:]
+
+            # Convert page to int for proper numeric sorting, default to 0 if empty
+            page_num = int(page_part) if page_part else 0
+
+            # For grid part, we need to handle complex patterns like:
+            # "A", "A1", "A10", "B2", "C1", etc.
+            # We'll break it down into: leading_letters + numbers + trailing_letters
+
+            grid_leading_alpha = ""
+            grid_num_part = ""
+            grid_trailing_alpha = ""
+
+            j = 0
+            # Extract leading letters
+            while j < len(grid_part) and grid_part[j].isalpha():
+                grid_leading_alpha += grid_part[j]
+                j += 1
+
+            # Extract numbers
+            while j < len(grid_part) and grid_part[j].isdigit():
+                grid_num_part += grid_part[j]
+                j += 1
+
+            # Rest is trailing letters
+            grid_trailing_alpha = grid_part[j:]
+
+            grid_num = int(grid_num_part) if grid_num_part else 0
+
+            return (page_num, grid_leading_alpha, grid_num, grid_trailing_alpha)
+
+        except Exception as e:
+            logging.warning(f"Error parsing wire number '{wire_num}' for sorting: {e}")
+            # Fallback to lexicographic sorting for this wire number
+            return (999999, 'ZZZ', 999999, wire_num)
     
     def calculate_wire_number(self, page_number, grid_position):
         """Calculate wire number from page and grid position"""
@@ -210,10 +267,9 @@ class WireNumberAssigner:
         """Get the lowest wire number from a list"""
         if not wire_numbers:
             return None
-        
-        # Sort wire numbers to get the lowest one
-        # This will sort lexicographically, which should work for most cases
-        sorted_numbers = sorted(wire_numbers)
+
+        # Sort wire numbers using the custom key that handles numeric page and grid comparison
+        sorted_numbers = sorted(wire_numbers, key=self.wire_number_sort_key)
         return sorted_numbers[0]
     
 
@@ -344,7 +400,8 @@ class WireNumberAssigner:
 
                     if all_wire_data:
                         # Find the wire data with the lowest wire number for this signal
-                        all_wire_data.sort(key=lambda x: x['wire_number'])
+                        # Use the same sorting logic as get_lowest_wire_number
+                        all_wire_data.sort(key=lambda x: self.wire_number_sort_key(x['wire_number']))
                         lowest_wire_data = all_wire_data[0]
 
                         # Store signal data for later processing
