@@ -30,11 +30,17 @@ try:
     from lib.e3_device_designation import run_device_designation_automation
     from lib.e3_terminal_pin_names import run_terminal_pin_name_automation
     from lib.e3_wire_numbering import run_wire_number_automation
-    from lib.theme_utils import apply_theme
 except ImportError as e:
     print(f"Error importing required modules: {e}")
     print("Make sure all required modules are in the lib folder.")
     sys.exit(1)
+
+# Try to import theme utilities (optional)
+try:
+    from lib.theme_utils import apply_theme
+    THEME_UTILS_AVAILABLE = True
+except ImportError:
+    THEME_UTILS_AVAILABLE = False
 
 
 class LogHandler(logging.Handler):
@@ -76,9 +82,13 @@ class E3AutomationGUI(ctk.CTk):
         self.minsize(800, 500)
         
         # Apply theme
-        try:
-            apply_theme("red", "dark")
-        except:
+        if THEME_UTILS_AVAILABLE:
+            try:
+                apply_theme("red", "dark")
+            except:
+                ctk.set_appearance_mode("dark")
+                ctk.set_default_color_theme("blue")
+        else:
             ctk.set_appearance_mode("dark")
             ctk.set_default_color_theme("blue")
         
