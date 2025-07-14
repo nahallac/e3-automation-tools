@@ -25,13 +25,34 @@ jobs:
         token: ${{ secrets.MAIN_REPO_TOKEN }}
         path: main-repo
         
-    - name: Copy Wire Numbering Script
+    - name: Copy E3 Automation Scripts
       run: |
-        cp main-repo/apps/set_wire_numbers.py scripts/
-        
-    - name: Copy Wire Numbering Documentation
+        # Copy individual scripts (legacy - optional)
+        mkdir -p scripts
+        if [ -f "main-repo/apps/set_wire_numbers.py" ]; then
+          cp main-repo/apps/set_wire_numbers.py scripts/
+          echo "✓ Copied legacy wire numbering script"
+        else
+          echo "⚠ Legacy wire numbering script not found (skipping)"
+        fi
+
+        # Copy library modules (required)
+        mkdir -p lib
+        cp main-repo/lib/e3_wire_numbering.py lib/
+        cp main-repo/lib/e3_device_designation.py lib/
+        cp main-repo/lib/e3_terminal_pin_names.py lib/
+        echo "✓ Copied E3 automation library modules"
+
+        # Copy NA Standards GUI (required)
+        mkdir -p gui
+        cp main-repo/apps/e3_NA_Standards.py gui/
+        echo "✓ Copied NA Standards GUI"
+
+    - name: Copy Documentation
       run: |
-        cp main-repo/README_wire_numbering.md docs/wire_numbering.md
+        cp main-repo/README_wire_numbering.md docs/wire_numbering.md 2>/dev/null || echo "Wire numbering docs not found"
+        cp main-repo/README_device_designation.md docs/device_designation.md 2>/dev/null || echo "Device designation docs not found"
+        cp main-repo/README_terminal_pin_names.md docs/terminal_pin_names.md 2>/dev/null || echo "Terminal pin names docs not found"
         
        
     - name: Update Requirements if Changed
@@ -41,6 +62,12 @@ jobs:
         echo "" >> requirements.txt
         echo "# Core Windows COM interface for E3.series" >> requirements.txt
         grep "pywin32" main-repo/requirements.txt >> requirements.txt || echo "pywin32==306" >> requirements.txt
+        echo "" >> requirements.txt
+        echo "# E3.series Python API" >> requirements.txt
+        grep "e3series" main-repo/requirements.txt >> requirements.txt || echo "e3series" >> requirements.txt
+        echo "" >> requirements.txt
+        echo "# GUI framework for NA Standards app" >> requirements.txt
+        grep "customtkinter" main-repo/requirements.txt >> requirements.txt || echo "customtkinter==5.2.1" >> requirements.txt
         
     - name: Check for Changes
       id: changes
@@ -74,7 +101,7 @@ jobs:
         # Create release using GitHub CLI
         gh release create "$TAG_NAME" \
           --title "$RELEASE_NAME" \
-          --notes "Automated sync from main repository. Updated files: Wire numbering script, Documentation, Dependencies" \
+          --notes "Automated sync from main repository. Updated files: E3 automation libraries, NA Standards GUI, Documentation, Dependencies" \
           --latest
       env:
         GITHUB_TOKEN: ${{ secrets.MAIN_REPO_TOKEN }}

@@ -1,34 +1,51 @@
 # E3.series Automation Tools
 
-A collection of automation scripts for E3.series electrical design software, focusing on wire numbering and device designation management.
+A comprehensive collection of automation scripts and GUI tools for E3.series electrical design software, focusing on North American electrical standards compliance.
 
 ## Features
 
 ### Current Tools
-- **Wire Number Assignment** (`set_wire_numbers.py`) - Automatically assigns wire numbers based on page and grid position with intelligent conflict resolution
+- **Wire Number Assignment** - Automatically assigns wire numbers based on page and grid position with intelligent conflict resolution
+- **Device Designation Assignment** - Automatically assigns device designations based on sheet and grid position
+- **Terminal Pin Name Assignment** - Sets terminal pin names to match connected wire numbers
+- **NA Standards GUI** - User-friendly interface for running all automation tools with real-time feedback
 
-### Planned Tools
-- **Device Designation Assignment** - Automatically assign device designations based on configurable rules
-- **GUI Interface** - User-friendly interface for running and configuring all automation tools
+### Available Interfaces
+- **Individual Scripts** - Run each automation independently from command line
+- **Library Modules** - Import and use automation functions in custom workflows
+- **GUI Application** - Modern interface with batch processing and live logging
 
 ## Quick Start
 
 ### Prerequisites
 - E3.series software installed and running
-- Python 3.7+ with the following packages:
-  ```bash
-  pip install e3series pywin32
-  ```
+- Python 3.7+ with required packages (see Installation section)
 - An open E3 project
 
-### Wire Number Assignment
+### Using the GUI (Recommended)
 
 1. Open your E3 project
-2. Run the wire numbering script:
+2. Run the NA Standards GUI:
+   ```bash
+   python gui/e3_NA_Standards.py
+   ```
+3. Use individual buttons or "Run All" for complete automation
+4. Monitor progress in the real-time log area
+
+### Using Individual Scripts
+
+1. Wire numbering:
    ```bash
    python scripts/set_wire_numbers.py
    ```
-3. Check the generated log file `wire_numbering.log` for details
+2. Device designations:
+   ```bash
+   python lib/e3_device_designation.py
+   ```
+3. Terminal pin names:
+   ```bash
+   python lib/e3_terminal_pin_names.py
+   ```
 
 ## How It Works
 
@@ -57,6 +74,9 @@ The wire numbering script:
 ## Documentation
 
 - [Wire Numbering Guide](docs/wire_numbering.md) - Detailed documentation for the wire numbering tool
+- [Device Designation Guide](docs/device_designation.md) - Device designation automation documentation
+- [Terminal Pin Names Guide](docs/terminal_pin_names.md) - Terminal pin naming automation documentation
+- [NA Standards GUI Guide](docs/na_standards_gui.md) - Complete GUI application documentation
 - [Installation Guide](docs/installation.md) - Step-by-step installation instructions
 
 ## Support

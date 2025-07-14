@@ -7,9 +7,20 @@ on:
   push:
     branches: [ master, main ]
     paths:
+      # Legacy individual scripts
       - 'apps/set_wire_numbers.py'
       - 'apps/test_unique_wire_numbers.py'
+      # New library modules
+      - 'lib/e3_wire_numbering.py'
+      - 'lib/e3_device_designation.py'
+      - 'lib/e3_terminal_pin_names.py'
+      # NA Standards GUI
+      - 'apps/e3_NA_Standards.py'
+      # Documentation
       - 'README_wire_numbering.md'
+      - 'README_device_designation.md'
+      - 'README_terminal_pin_names.md'
+      # Dependencies
       - 'requirements.txt'
 
 jobs:
