@@ -68,6 +68,9 @@ def main():
         ("lib/e3_device_designation.py", "lib/e3_device_designation.py", False),
         ("lib/e3_terminal_pin_names.py", "lib/e3_terminal_pin_names.py", False),
 
+        # Theme utilities (optional)
+        ("lib/theme_utils.py", "lib/theme_utils.py", True),
+
         # NA Standards GUI (required)
         ("apps/e3_NA_Standards.py", "gui/e3_NA_Standards.py", False),
 

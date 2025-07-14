@@ -43,6 +43,14 @@ jobs:
         cp main-repo/lib/e3_terminal_pin_names.py lib/
         echo "✓ Copied E3 automation library modules"
 
+        # Copy theme utilities (optional)
+        if [ -f "main-repo/lib/theme_utils.py" ]; then
+          cp main-repo/lib/theme_utils.py lib/
+          echo "✓ Copied theme utilities"
+        else
+          echo "⚠ Theme utilities not found (skipping)"
+        fi
+
         # Copy NA Standards GUI (required)
         mkdir -p gui
         cp main-repo/apps/e3_NA_Standards.py gui/

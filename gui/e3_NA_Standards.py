@@ -30,7 +30,6 @@ try:
     from lib.e3_device_designation import run_device_designation_automation
     from lib.e3_terminal_pin_names import run_terminal_pin_name_automation
     from lib.e3_wire_numbering import run_wire_number_automation
-    from lib.theme_utils import apply_theme
 except ImportError as e:
     print(f"Error importing required modules: {e}")
     print("Make sure all required modules are in the lib folder.")
@@ -76,11 +75,8 @@ class E3AutomationGUI(ctk.CTk):
         self.minsize(800, 500)
         
         # Apply theme
-        try:
-            apply_theme("red", "dark")
-        except:
-            ctk.set_appearance_mode("dark")
-            ctk.set_default_color_theme("blue")
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
         
         # Initialize variables
         self.running_operation = False
@@ -130,9 +126,7 @@ class E3AutomationGUI(ctk.CTk):
             command=self.run_device_designation,
             width=200,
             height=60,
-            font=("Arial", 14, "bold"),
-            fg_color="#C53F3F",
-            hover_color="#A02222"
+            font=("Arial", 14, "bold")
         )
         self.device_designation_btn.grid(row=0, column=0, padx=10, pady=20)
         
@@ -143,9 +137,7 @@ class E3AutomationGUI(ctk.CTk):
             command=self.run_terminal_pin_names,
             width=200,
             height=60,
-            font=("Arial", 14, "bold"),
-            fg_color="#C53F3F",
-            hover_color="#A02222"
+            font=("Arial", 14, "bold")
         )
         self.terminal_pin_btn.grid(row=0, column=1, padx=10, pady=20)
         
@@ -156,9 +148,7 @@ class E3AutomationGUI(ctk.CTk):
             command=self.run_wire_numbers,
             width=200,
             height=60,
-            font=("Arial", 14, "bold"),
-            fg_color="#C53F3F",
-            hover_color="#A02222"
+            font=("Arial", 14, "bold")
         )
         self.wire_numbers_btn.grid(row=0, column=2, padx=10, pady=20)
 
@@ -170,7 +160,7 @@ class E3AutomationGUI(ctk.CTk):
             width=220,
             height=60,
             font=("Arial", 14, "bold"),
-            fg_color="#2AA876",
+            fg_color="#2FA572",
             hover_color="#1F8A5F"
         )
         self.run_all_btn.grid(row=0, column=3, padx=10, pady=20)
