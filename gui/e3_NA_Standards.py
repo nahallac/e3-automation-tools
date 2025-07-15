@@ -82,10 +82,6 @@ class E3AutomationGUI(ctk.CTk):
         self.minsize(800, 500)
         
         # Apply theme
-<<<<<<< HEAD
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
-=======
         if THEME_UTILS_AVAILABLE:
             try:
                 apply_theme("red", "dark")
@@ -95,7 +91,6 @@ class E3AutomationGUI(ctk.CTk):
         else:
             ctk.set_appearance_mode("dark")
             ctk.set_default_color_theme("blue")
->>>>>>> 43cdf2659e06dffa9e097f1b975554d3595ca7bf
         
         # Initialize variables
         self.running_operation = False
@@ -145,7 +140,9 @@ class E3AutomationGUI(ctk.CTk):
             command=self.run_device_designation,
             width=200,
             height=60,
-            font=("Arial", 14, "bold")
+            font=("Arial", 14, "bold"),
+            fg_color="#C53F3F",
+            hover_color="#A02222"
         )
         self.device_designation_btn.grid(row=0, column=0, padx=10, pady=20)
         
@@ -156,7 +153,9 @@ class E3AutomationGUI(ctk.CTk):
             command=self.run_terminal_pin_names,
             width=200,
             height=60,
-            font=("Arial", 14, "bold")
+            font=("Arial", 14, "bold"),
+            fg_color="#C53F3F",
+            hover_color="#A02222"
         )
         self.terminal_pin_btn.grid(row=0, column=1, padx=10, pady=20)
         
@@ -167,7 +166,9 @@ class E3AutomationGUI(ctk.CTk):
             command=self.run_wire_numbers,
             width=200,
             height=60,
-            font=("Arial", 14, "bold")
+            font=("Arial", 14, "bold"),
+            fg_color="#C53F3F",
+            hover_color="#A02222"
         )
         self.wire_numbers_btn.grid(row=0, column=2, padx=10, pady=20)
 
@@ -179,7 +180,7 @@ class E3AutomationGUI(ctk.CTk):
             width=220,
             height=60,
             font=("Arial", 14, "bold"),
-            fg_color="#2FA572",
+            fg_color="#2AA876",
             hover_color="#1F8A5F"
         )
         self.run_all_btn.grid(row=0, column=3, padx=10, pady=20)
