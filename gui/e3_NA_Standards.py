@@ -21,7 +21,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import customtkinter as ctk
-from datetime import datetime
+
 
 # Add parent directory to path to allow importing from lib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
