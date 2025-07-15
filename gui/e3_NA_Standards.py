@@ -347,6 +347,22 @@ class E3AutomationGUI(ctk.CTk):
         try:
             self.running_operation = True
             self.set_buttons_enabled(False)
+            self.update_status("Connecting to E3.series...", "#FFA500")
+
+            # Import the shared connection function
+            from lib.e3_connection_manager import create_shared_e3_connection
+
+            # Create a single shared E3 connection for all operations
+            self.logger.info("Establishing shared E3.series connection...")
+            e3_app, connection_manager = create_shared_e3_connection(self.logger)
+
+            if not e3_app:
+                self.logger.error("Failed to connect to E3.series")
+                self.update_status("Failed to connect to E3.series", "#FF0000")
+                messagebox.showerror("Connection Error", "Failed to connect to E3.series. Please ensure E3.series is running with a project open.")
+                return
+
+            self.logger.info("Successfully established shared E3.series connection")
             self.update_status("Running all automation scripts...", "#FFA500")
 
             operations = [
@@ -361,8 +377,8 @@ class E3AutomationGUI(ctk.CTk):
                 self.logger.info(f"Starting {operation_name} ({i}/3)")
                 self.update_status(f"Running {operation_name} ({i}/3)...", "#FFA500")
 
-                # Run the operation with the GUI logger
-                success = operation_func(self.logger)
+                # Run the operation with the shared E3 app instance
+                success = operation_func(self.logger, e3_app)
 
                 if success:
                     self.logger.info(f"{operation_name} completed successfully!")

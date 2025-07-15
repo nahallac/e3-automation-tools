@@ -29,10 +29,11 @@ import e3series
 import logging
 import sys
 import pythoncom
+from .e3_connection_manager import E3ConnectionManager
 
 class WireNumberAssigner:
-    def __init__(self, logger=None):
-        self.app = None
+    def __init__(self, logger=None, e3_app=None):
+        self.app = e3_app  # Allow passing existing E3 app instance
         self.job = None
         self.connection = None
         self.pin = None
@@ -41,15 +42,26 @@ class WireNumberAssigner:
         self.net = None
         self.net_segment = None
         self.logger = logger or logging.getLogger(__name__)
+        self.owns_connection = e3_app is None  # Track if we created the connection
         
     def connect_to_e3(self):
-        """Connect to the open E3 application"""
+        """Connect to the open E3 application with support for multiple instances"""
         try:
-            # Initialize COM
-            pythoncom.CoInitialize()
+            # If we already have an app instance, use it
+            if self.app is None:
+                # Initialize COM
+                pythoncom.CoInitialize()
 
-            # Connect to the active E3.series application
-            self.app = e3series.Application()
+                # Use the connection manager to handle multiple instances
+                connection_manager = E3ConnectionManager(self.logger)
+                self.app = connection_manager.connect_to_e3()
+
+                if not self.app:
+                    return False
+            else:
+                self.logger.info("Using provided E3 application instance")
+
+            # Create E3 objects
             self.job = self.app.CreateJobObject()
             self.connection = self.job.CreateConnectionObject()
             self.pin = self.job.CreatePinObject()
@@ -484,8 +496,9 @@ class WireNumberAssigner:
             return False
 
         finally:
-            # Clean up E3.series objects
-            self.app = None
+            # Clean up E3.series objects (but don't clean up shared app instance)
+            if self.owns_connection:
+                self.app = None
             self.job = None
             self.connection = None
             self.pin = None
@@ -493,19 +506,21 @@ class WireNumberAssigner:
             self.signal = None
             self.net = None
             self.net_segment = None
-            # Uninitialize COM
-            try:
-                pythoncom.CoUninitialize()
-            except:
-                pass
+            # Only uninitialize COM if we created the connection
+            if self.owns_connection:
+                try:
+                    pythoncom.CoUninitialize()
+                except:
+                    pass
 
 
-def run_wire_number_automation(logger=None):
+def run_wire_number_automation(logger=None, e3_app=None):
     """
     Main function to run wire number automation.
 
     Args:
         logger: Optional logger instance. If None, creates a default logger.
+        e3_app: Optional existing E3 application instance to reuse.
 
     Returns:
         bool: True if successful, False otherwise
@@ -522,7 +537,7 @@ def run_wire_number_automation(logger=None):
         )
         logger = logging.getLogger(__name__)
 
-    assigner = WireNumberAssigner(logger)
+    assigner = WireNumberAssigner(logger, e3_app)
     success = assigner.run()
 
     if success:

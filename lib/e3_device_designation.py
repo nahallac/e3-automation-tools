@@ -33,28 +33,40 @@ import sys
 from typing import Dict, List, Tuple, Optional
 import e3series
 import pythoncom
+from .e3_connection_manager import E3ConnectionManager
 
 
 class DeviceDesignationManager:
     """Manages device and cable designation automation for E3.series projects"""
-    
-    def __init__(self, logger=None):
-        self.app = None
+
+    def __init__(self, logger=None, e3_app=None):
+        self.app = e3_app  # Allow passing existing E3 app instance
         self.job = None
         self.device = None
         self.symbol = None
         self.sheet = None
         self.logger = logger or logging.getLogger(__name__)
+        self.owns_connection = e3_app is None  # Track if we created the connection
 
         
     def connect_to_e3(self):
-        """Connect to E3 application"""
+        """Connect to E3 application with support for multiple instances"""
         try:
-            # Initialize COM
-            pythoncom.CoInitialize()
+            # If we already have an app instance, use it
+            if self.app is None:
+                # Initialize COM
+                pythoncom.CoInitialize()
 
-            # Connect to the active E3.series application
-            self.app = e3series.Application()
+                # Use the connection manager to handle multiple instances
+                connection_manager = E3ConnectionManager(self.logger)
+                self.app = connection_manager.connect_to_e3()
+
+                if not self.app:
+                    return False
+            else:
+                self.logger.info("Using provided E3 application instance")
+
+            # Create E3 objects
             self.job = self.app.CreateJobObject()
             self.device = self.job.CreateDeviceObject()
             self.symbol = self.job.CreateSymbolObject()
@@ -609,25 +621,28 @@ class DeviceDesignationManager:
             self.logger.error(f"Error in main execution: {e}")
             return False
         finally:
-            # Clean up E3.series objects
-            self.app = None
+            # Clean up E3.series objects (but don't clean up shared app instance)
+            if self.owns_connection:
+                self.app = None
             self.job = None
             self.device = None
             self.symbol = None
             self.sheet = None
-            # Uninitialize COM
-            try:
-                pythoncom.CoUninitialize()
-            except:
-                pass
+            # Only uninitialize COM if we created the connection
+            if self.owns_connection:
+                try:
+                    pythoncom.CoUninitialize()
+                except:
+                    pass
 
 
-def run_device_designation_automation(logger=None):
+def run_device_designation_automation(logger=None, e3_app=None):
     """
     Main function to run device designation automation.
 
     Args:
         logger: Optional logger instance. If None, creates a default logger.
+        e3_app: Optional existing E3 application instance to reuse.
 
     Returns:
         bool: True if successful, False otherwise
@@ -645,7 +660,7 @@ def run_device_designation_automation(logger=None):
         logger = logging.getLogger(__name__)
 
     try:
-        manager = DeviceDesignationManager(logger)
+        manager = DeviceDesignationManager(logger, e3_app)
         success = manager.run()
 
         if success:
