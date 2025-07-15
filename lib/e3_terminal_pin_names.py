@@ -25,44 +25,41 @@ import sys
 from collections import defaultdict
 import e3series
 import pythoncom
-from .e3_connection_manager import E3ConnectionManager
 
 class TerminalPinNameSetter:
-    def __init__(self, logger=None, e3_app=None):
-        self.app = e3_app  # Allow passing existing E3 app instance
+    def __init__(self, logger=None, e3_pid=None):
+        self.app = None
         self.job = None
         self.device = None
         self.pin = None
         self.net_segment = None
         self.connection = None
         self.logger = logger or logging.getLogger(__name__)
-        self.owns_connection = e3_app is None  # Track if we created the connection
+        self.e3_pid = e3_pid
         
     def connect_to_e3(self):
-        """Connect to the open E3 application with support for multiple instances"""
+        """Connect to E3 application using connection manager"""
         try:
-            # If we already have an app instance, use it
-            if self.app is None:
-                # Initialize COM
-                pythoncom.CoInitialize()
-
-                # Use the connection manager to handle multiple instances
-                connection_manager = E3ConnectionManager(self.logger)
-                self.app = connection_manager.connect_to_e3()
-
-                if not self.app:
+            # Get E3 PID if not already provided
+            if self.e3_pid is None:
+                from .e3_connection_manager import get_e3_connection_pid
+                self.e3_pid = get_e3_connection_pid(self.logger)
+                if self.e3_pid is None:
                     return False
-            else:
-                self.logger.info("Using provided E3 application instance")
 
-            # Create E3 objects
-            self.job = self.app.CreateJobObject()
-            self.device = self.job.CreateDeviceObject()
-            self.pin = self.job.CreatePinObject()
-            self.net_segment = self.job.CreateNetSegmentObject()
-            self.connection = self.job.CreateConnectionObject()
-            self.logger.info("Successfully connected to E3 application using e3series library")
-            return True
+            # Connect using the PID
+            from .e3_connection_manager import connect_to_e3_with_pid
+            success, objects = connect_to_e3_with_pid(self.e3_pid, self.logger)
+            if success:
+                self.app = objects['app']
+                self.job = objects['job']
+                self.device = objects['device']
+                self.pin = objects['pin']
+                self.net_segment = objects['net_segment']
+                self.connection = objects['connection']
+                return True
+            else:
+                return False
         except Exception as e:
             self.logger.error(f"Failed to connect to E3: {e}")
             return False
@@ -317,29 +314,20 @@ class TerminalPinNameSetter:
             self.logger.error(f"Error in main execution: {e}")
             return False
         finally:
-            # Clean up objects (but don't clean up shared app instance)
-            if self.owns_connection:
-                self.app = None
-            self.job = None
-            self.device = None
-            self.pin = None
-            self.net_segment = None
-            self.connection = None
-            # Only uninitialize COM if we created the connection
-            if self.owns_connection:
-                try:
-                    pythoncom.CoUninitialize()
-                except:
-                    pass
+            # Uninitialize COM
+            try:
+                pythoncom.CoUninitialize()
+            except:
+                pass
 
 
-def run_terminal_pin_name_automation(logger=None, e3_app=None):
+def run_terminal_pin_name_automation(logger=None, e3_pid=None):
     """
     Main function to run terminal pin name automation.
 
     Args:
         logger: Optional logger instance. If None, creates a default logger.
-        e3_app: Optional existing E3 application instance to reuse.
+        e3_pid: Optional E3.series process ID. If None, will prompt user to select.
 
     Returns:
         bool: True if successful, False otherwise
@@ -356,7 +344,7 @@ def run_terminal_pin_name_automation(logger=None, e3_app=None):
         )
         logger = logging.getLogger(__name__)
 
-    setter = TerminalPinNameSetter(logger, e3_app)
+    setter = TerminalPinNameSetter(logger, e3_pid)
     success = setter.run()
 
     if success:

@@ -30,6 +30,7 @@ try:
     from lib.e3_device_designation import run_device_designation_automation
     from lib.e3_terminal_pin_names import run_terminal_pin_name_automation
     from lib.e3_wire_numbering import run_wire_number_automation
+    from lib.e3_connection_manager import get_e3_connection_pid
 except ImportError as e:
     print(f"Error importing required modules: {e}")
     print("Make sure all required modules are in the lib folder.")
@@ -94,6 +95,7 @@ class E3AutomationGUI(ctk.CTk):
         
         # Initialize variables
         self.running_operation = False
+        self.e3_pid = None  # Store E3 PID for reuse across operations
         
         # Create widgets
         self.create_widgets()
@@ -285,9 +287,17 @@ class E3AutomationGUI(ctk.CTk):
             self.update_status(f"Running {operation_name}...", "#FFA500")
             
             self.logger.info(f"Starting {operation_name}")
-            
-            # Run the operation with the GUI logger
-            success = operation_func(self.logger)
+
+            # Get E3 PID if not already available
+            if self.e3_pid is None:
+                self.e3_pid = get_e3_connection_pid(self.logger)
+                if self.e3_pid is None:
+                    self.logger.error("No E3.series instance selected")
+                    self.update_status("No E3.series instance selected", "#FF0000")
+                    return
+
+            # Run the operation with the GUI logger and E3 PID
+            success = operation_func(self.logger, self.e3_pid)
             
             if success:
                 self.logger.info(f"{operation_name} completed successfully!")
@@ -347,23 +357,15 @@ class E3AutomationGUI(ctk.CTk):
         try:
             self.running_operation = True
             self.set_buttons_enabled(False)
-            self.update_status("Connecting to E3.series...", "#FFA500")
-
-            # Import the shared connection function
-            from lib.e3_connection_manager import create_shared_e3_connection
-
-            # Create a single shared E3 connection for all operations
-            self.logger.info("Establishing shared E3.series connection...")
-            e3_app, connection_manager = create_shared_e3_connection(self.logger)
-
-            if not e3_app:
-                self.logger.error("Failed to connect to E3.series")
-                self.update_status("Failed to connect to E3.series", "#FF0000")
-                messagebox.showerror("Connection Error", "Failed to connect to E3.series. Please ensure E3.series is running with a project open.")
-                return
-
-            self.logger.info("Successfully established shared E3.series connection")
             self.update_status("Running all automation scripts...", "#FFA500")
+
+            # Get E3 PID once for all operations
+            if self.e3_pid is None:
+                self.e3_pid = get_e3_connection_pid(self.logger)
+                if self.e3_pid is None:
+                    self.logger.error("No E3.series instance selected")
+                    self.update_status("No E3.series instance selected", "#FF0000")
+                    return
 
             operations = [
                 (run_wire_number_automation, "Wire Number Automation"),
@@ -377,8 +379,8 @@ class E3AutomationGUI(ctk.CTk):
                 self.logger.info(f"Starting {operation_name} ({i}/3)")
                 self.update_status(f"Running {operation_name} ({i}/3)...", "#FFA500")
 
-                # Run the operation with the shared E3 app instance
-                success = operation_func(self.logger, e3_app)
+                # Run the operation with the GUI logger and E3 PID
+                success = operation_func(self.logger, self.e3_pid)
 
                 if success:
                     self.logger.info(f"{operation_name} completed successfully!")
