@@ -41,6 +41,7 @@ jobs:
         cp main-repo/lib/e3_wire_numbering.py lib/
         cp main-repo/lib/e3_device_designation.py lib/
         cp main-repo/lib/e3_terminal_pin_names.py lib/
+        cp main-repo/lib/e3_connection_manager.py lib/
         echo "✓ Copied E3 automation library modules"
 
         # Copy theme utilities (optional)
@@ -56,11 +57,22 @@ jobs:
         cp main-repo/apps/e3_NA_Standards.py gui/
         echo "✓ Copied NA Standards GUI"
 
+        # Copy test files (optional)
+        mkdir -p tests
+        if [ -f "main-repo/apps/test_e3_selector_gui.py" ]; then
+          cp main-repo/apps/test_e3_selector_gui.py tests/
+          echo "✓ Copied connection manager test"
+        else
+          echo "⚠ Connection manager test not found (skipping)"
+        fi
+
     - name: Copy Documentation
       run: |
+        mkdir -p docs
         cp main-repo/README_wire_numbering.md docs/wire_numbering.md 2>/dev/null || echo "Wire numbering docs not found"
         cp main-repo/README_device_designation.md docs/device_designation.md 2>/dev/null || echo "Device designation docs not found"
         cp main-repo/README_terminal_pin_names.md docs/terminal_pin_names.md 2>/dev/null || echo "Terminal pin names docs not found"
+        cp main-repo/README_e3_connection_manager.md docs/connection_manager.md 2>/dev/null || echo "Connection manager docs not found"
         
        
     - name: Update Requirements if Changed
@@ -109,7 +121,7 @@ jobs:
         # Create release using GitHub CLI
         gh release create "$TAG_NAME" \
           --title "$RELEASE_NAME" \
-          --notes "Automated sync from main repository. Updated files: E3 automation libraries, NA Standards GUI, Documentation, Dependencies" \
+          --notes "Automated sync from main repository. Updated files: E3 automation libraries (including connection manager), NA Standards GUI, Documentation, Test files, Dependencies" \
           --latest
       env:
         GITHUB_TOKEN: ${{ secrets.MAIN_REPO_TOKEN }}
