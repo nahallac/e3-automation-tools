@@ -30,6 +30,7 @@ try:
     from lib.e3_device_designation import run_device_designation_automation
     from lib.e3_terminal_pin_names import run_terminal_pin_name_automation
     from lib.e3_wire_numbering import run_wire_number_automation
+    from lib.e3_wire_core_sync import WireCoreSynchronizer
     from lib.e3_connection_manager import get_e3_connection_pid
 except ImportError as e:
     print(f"Error importing required modules: {e}")
@@ -133,7 +134,7 @@ class E3AutomationGUI(ctk.CTk):
         # Buttons frame
         buttons_frame = ctk.CTkFrame(self)
         buttons_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
-        buttons_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
         
         # Device Designation button
         self.device_designation_btn = ctk.CTkButton(
@@ -174,18 +175,31 @@ class E3AutomationGUI(ctk.CTk):
         )
         self.wire_numbers_btn.grid(row=0, column=2, padx=10, pady=20)
 
+        # Wire Core Sync button
+        self.wire_core_sync_btn = ctk.CTkButton(
+            buttons_frame,
+            text="Sync Wire\nCore Properties",
+            command=self.run_wire_core_sync,
+            width=200,
+            height=60,
+            font=("Arial", 14, "bold"),
+            fg_color="#C53F3F",
+            hover_color="#A02222"
+        )
+        self.wire_core_sync_btn.grid(row=0, column=3, padx=10, pady=20)
+
         # Run All button
         self.run_all_btn = ctk.CTkButton(
             buttons_frame,
-            text="Run All\n(Wire → Device → Terminal)",
+            text="Run All\n(Wire → Core → Device → Terminal)",
             command=self.run_all_automation,
             width=220,
             height=60,
-            font=("Arial", 14, "bold"),
+            font=("Arial", 12, "bold"),
             fg_color="#2AA876",
             hover_color="#1F8A5F"
         )
-        self.run_all_btn.grid(row=0, column=3, padx=10, pady=20)
+        self.run_all_btn.grid(row=0, column=4, padx=10, pady=20)
         
         # Log area
         log_frame = ctk.CTkFrame(self)
@@ -271,6 +285,7 @@ class E3AutomationGUI(ctk.CTk):
         self.device_designation_btn.configure(state=state)
         self.terminal_pin_btn.configure(state=state)
         self.wire_numbers_btn.configure(state=state)
+        self.wire_core_sync_btn.configure(state=state)
         self.run_all_btn.configure(state=state)
         
     def update_status(self, message, color=None):
@@ -352,8 +367,29 @@ class E3AutomationGUI(ctk.CTk):
         )
         thread.start()
 
+    def run_wire_core_sync(self):
+        """Run wire core synchronization"""
+        if self.running_operation:
+            return
+
+        thread = threading.Thread(
+            target=self.run_operation_thread,
+            args=(self.run_wire_core_sync_operation, "Wire Core Synchronization"),
+            daemon=True
+        )
+        thread.start()
+
+    def run_wire_core_sync_operation(self, logger, e3_pid):
+        """Wire core sync operation wrapper"""
+        try:
+            synchronizer = WireCoreSynchronizer(e3_pid=e3_pid)
+            return synchronizer.run()
+        except Exception as e:
+            logger.error(f"Wire core synchronization failed: {e}")
+            return False
+
     def run_all_operations_thread(self):
-        """Run all three operations in sequence: Wire Numbers → Device Designation → Terminal Pins"""
+        """Run all four operations in sequence: Wire Numbers → Wire Core Sync → Device Designation → Terminal Pins"""
         try:
             self.running_operation = True
             self.set_buttons_enabled(False)
@@ -369,6 +405,7 @@ class E3AutomationGUI(ctk.CTk):
 
             operations = [
                 (run_wire_number_automation, "Wire Number Automation"),
+                (self.run_wire_core_sync_operation, "Wire Core Synchronization"),
                 (run_device_designation_automation, "Device Designation Automation"),
                 (run_terminal_pin_name_automation, "Terminal Pin Name Automation")
             ]
@@ -376,8 +413,8 @@ class E3AutomationGUI(ctk.CTk):
             all_successful = True
 
             for i, (operation_func, operation_name) in enumerate(operations, 1):
-                self.logger.info(f"Starting {operation_name} ({i}/3)")
-                self.update_status(f"Running {operation_name} ({i}/3)...", "#FFA500")
+                self.logger.info(f"Starting {operation_name} ({i}/4)")
+                self.update_status(f"Running {operation_name} ({i}/4)...", "#FFA500")
 
                 # Run the operation with the GUI logger and E3 PID
                 success = operation_func(self.logger, self.e3_pid)

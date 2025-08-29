@@ -475,12 +475,109 @@ def connect_to_e3_with_pid(pid: int, logger=None) -> Tuple[bool, dict]:
         # Initialize COM
         pythoncom.CoInitialize()
 
+        # Try to bring the specific E3 window to foreground and activate it
+        try:
+            import win32gui
+            import win32process
+            import win32con
+            import time
+
+            def enum_windows_callback(hwnd, windows):
+                try:
+                    if win32gui.IsWindowVisible(hwnd):
+                        _, window_pid = win32process.GetWindowThreadProcessId(hwnd)
+                        if window_pid == pid:
+                            window_title = win32gui.GetWindowText(hwnd)
+                            class_name = win32gui.GetClassName(hwnd)
+
+                            # More comprehensive E3 window detection
+                            is_e3_window = (
+                                'e3.series' in window_title.lower() or
+                                window_title.endswith('.e3s') or
+                                'e3series' in class_name.lower() or
+                                'e3.application' in class_name.lower() or
+                                ('e3' in window_title.lower() and '.e3s' in window_title)
+                            )
+
+                            if is_e3_window:
+                                windows.append((hwnd, window_title, class_name))
+                                logger.debug(f"Found E3 window: PID={window_pid}, Title='{window_title}', Class='{class_name}'")
+                except Exception:
+                    # Continue enumeration even if one window fails
+                    pass
+                return True
+
+            windows = []
+            win32gui.EnumWindows(enum_windows_callback, windows)
+
+            if windows:
+                # Bring the E3 window to foreground and activate it
+                hwnd, title, class_name = windows[0]
+
+                logger.debug(f"Activating E3 window: PID={pid}, Title='{title}', Class='{class_name}'")
+
+                # Restore window if minimized
+                if win32gui.IsIconic(hwnd):
+                    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+
+                # Try multiple methods to bring window to foreground
+                try:
+                    # Method 1: Standard approach
+                    win32gui.SetForegroundWindow(hwnd)
+                except Exception:
+                    try:
+                        # Method 2: Alternative approach
+                        win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+                        win32gui.SetWindowPos(hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
+                                            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+                    except Exception:
+                        # Method 3: Just show the window
+                        win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+
+                try:
+                    win32gui.BringWindowToTop(hwnd)
+                except Exception:
+                    pass
+
+                try:
+                    win32gui.SetActiveWindow(hwnd)
+                except Exception:
+                    pass
+
+                # Give it a moment to become active
+                time.sleep(1.0)  # Increased delay
+
+                logger.info(f"Activated E3 window: {title} (PID: {pid})")
+            else:
+                logger.warning(f"Could not find E3 window for PID {pid}")
+                # List all E3-related windows for debugging
+                logger.debug("Available E3 windows:")
+                for proc in psutil.process_iter(['pid', 'name']):
+                    try:
+                        if 'e3' in proc.info['name'].lower():
+                            logger.debug(f"  PID {proc.info['pid']}: {proc.info['name']}")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+        except ImportError:
+            logger.debug("win32gui not available, skipping window focus")
+        except Exception as e:
+            logger.warning(f"Could not bring E3 window to foreground: {e}")
+
         # Connect to E3.series application
-        # Note: The e3series library doesn't directly support PID-based connection
-        # This is a placeholder for the connection logic that would need to be
-        # implemented based on the specific E3 API capabilities
+        # Note: The e3series library connects to the active/foreground E3 instance
         app = e3series.Application()
         job = app.CreateJobObject()
+
+        # Verify we're connected to the correct instance
+        try:
+            connected_pid = app.GetProcessProperty("ProcessID")
+            if connected_pid and int(connected_pid) != pid:
+                logger.warning(f"Connected to PID {connected_pid} instead of requested PID {pid}")
+            else:
+                logger.info(f"Verified connection to correct PID: {pid}")
+        except Exception as e:
+            logger.debug(f"Could not verify PID: {e}")
 
         objects = {
             'app': app,
