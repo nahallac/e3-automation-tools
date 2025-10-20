@@ -464,6 +464,5 @@ def main():
         print(f"Error starting E3 Automation GUI: {e}")
         sys.exit(1)
 
-
 if __name__ == "__main__":
     main()
