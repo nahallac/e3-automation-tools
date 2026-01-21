@@ -487,114 +487,82 @@ class DeviceDesignationManager:
             devices_with_symbols = 0
             devices_without_symbols = 0
             terminal_devices_skipped = 0
+            cables_skipped = 0
             non_terminal_devices = []
 
-            # First pass: separate terminals from other devices and identify cables
-            cable_count = 0
+            # First pass: separate terminals and cables from other devices
             for device_id in actual_devices:
                 try:
+                    # Check if this is a cable - skip it completely
+                    if self.is_cable_device(device_id):
+                        cables_skipped += 1
+                        self.logger.info(f"Device {device_id} identified as cable - skipping")
+                        continue
+
                     # Check if this is a terminal device - skip it completely
                     if self.is_terminal_device(device_id):
                         terminal_devices_skipped += 1
                         self.logger.info(f"Device {device_id} identified as terminal device - skipping")
                         continue
 
-                    # Check if this is a cable
-                    if self.is_cable_device(device_id):
-                        cable_count += 1
-                        self.logger.info(f"Device {device_id} identified as cable")
-                        # Cables are processed as non-terminal devices for designation purposes
-                        non_terminal_devices.append(device_id)
-                    else:
-                        non_terminal_devices.append(device_id)
+                    non_terminal_devices.append(device_id)
                 except Exception as e:
                     self.logger.error(f"Error checking device type for {device_id}: {e}")
                     non_terminal_devices.append(device_id)  # Default to non-terminal
 
-            self.logger.info(f"Skipped {terminal_devices_skipped} terminal devices, processing {len(non_terminal_devices)} non-terminal devices (including {cable_count} cables)")
+            self.logger.info(f"Skipped {terminal_devices_skipped} terminal devices and {cables_skipped} cables, processing {len(non_terminal_devices)} regular devices")
 
-            # Process non-terminal devices for designation updates
-            cable_counter = 1  # Sequential counter for cables
+            # Process non-terminal, non-cable devices for designation updates
             for device_id in non_terminal_devices:
                 try:
-                    # Check if this is a cable - handle differently
-                    if self.is_cable_device(device_id):
-                        # Get cable's default letter code (instead of hardcoding "W")
-                        letter_code = self.get_device_letter_code(device_id)
+                    # Get device letter code
+                    letter_code = self.get_device_letter_code(device_id)
 
-                        # For cables, use sequential numbering with their default letter code
-                        cable_designation = f"{letter_code}{cable_counter:03d}"  # e.g., CBL001, CBL002, etc.
-                        cable_counter += 1
+                    # Get position and first symbol ID of topmost leftmost symbol
+                    sheet, grid, first_symbol_id = self.get_first_symbol_info(device_id)
 
-                        # Get position info for logging purposes
-                        sheet, grid, _ = self.get_cable_position_info(device_id)
+                    if sheet and grid and first_symbol_id:
+                        # Generate base designation
+                        base_designation = self.generate_device_designation(letter_code, sheet, grid)
 
-                        # Store cable data
+                        # Store device data including the first symbol ID
                         device_data[device_id] = {
                             'letter_code': letter_code,
-                            'sheet': sheet or 'Unknown',
-                            'grid': grid or 'Unknown',
-                            'base_designation': cable_designation,
-                            'first_symbol_id': None  # Cables don't have symbols
+                            'sheet': sheet,
+                            'grid': grid,
+                            'base_designation': base_designation,
+                            'first_symbol_id': first_symbol_id
                         }
 
-                        # Track designations for conflict resolution (though cables shouldn't conflict)
-                        if cable_designation not in designations:
-                            designations[cable_designation] = []
-                        designations[cable_designation].append(device_id)
+                        # Track designations for conflict resolution
+                        if base_designation not in designations:
+                            designations[base_designation] = []
+                        designations[base_designation].append(device_id)
 
-                        self.logger.info(f"Cable {device_id}: {letter_code} at sheet {sheet or 'Unknown'}, grid {grid or 'Unknown'} -> {cable_designation}")
-                        devices_with_symbols += 1  # Count as processed
+                        self.logger.info(f"Device {device_id}: {letter_code} at sheet {sheet}, grid {grid} -> {base_designation}")
+                        devices_with_symbols += 1
                     else:
-                        # Regular device processing
-                        # Get device letter code
-                        letter_code = self.get_device_letter_code(device_id)
-
-                        # Get position and first symbol ID of topmost leftmost symbol
-                        sheet, grid, first_symbol_id = self.get_first_symbol_info(device_id)
-
-                        if sheet and grid and first_symbol_id:
-                            # Generate base designation
-                            base_designation = self.generate_device_designation(letter_code, sheet, grid)
-
-                            # Store device data including the first symbol ID
-                            device_data[device_id] = {
-                                'letter_code': letter_code,
-                                'sheet': sheet,
-                                'grid': grid,
-                                'base_designation': base_designation,
-                                'first_symbol_id': first_symbol_id
-                            }
-
-                            # Track designations for conflict resolution
-                            if base_designation not in designations:
-                                designations[base_designation] = []
-                            designations[base_designation].append(device_id)
-
-                            self.logger.info(f"Device {device_id}: {letter_code} at sheet {sheet}, grid {grid} -> {base_designation}")
-                            devices_with_symbols += 1
-                        else:
-                            self.logger.info(f"Could not determine position for device {device_id} (sheet={sheet}, grid={grid}, symbol_id={first_symbol_id}), counting as without symbols")
-                            devices_without_symbols += 1
+                        self.logger.info(f"Could not determine position for device {device_id} (sheet={sheet}, grid={grid}, symbol_id={first_symbol_id}), counting as without symbols")
+                        devices_without_symbols += 1
 
                 except Exception as e:
                     self.logger.error(f"Error processing device {device_id}: {e}")
                     devices_without_symbols += 1
                     continue
 
-            self.logger.info(f"Found {devices_with_symbols} non-terminal devices with placed symbols, {devices_without_symbols} devices without placed symbols")
+            self.logger.info(f"Found {devices_with_symbols} regular devices with placed symbols, {devices_without_symbols} devices without placed symbols")
 
-            # Resolve conflicts and assign final designations for non-terminal devices
+            # Resolve conflicts and assign final designations for regular devices
             final_designations = self.assign_suffix_for_conflicts(designations, device_data)
 
-            # Update device designations for non-terminal devices
+            # Update device designations for regular devices
             designation_success_count = 0
             for device_id, final_designation in final_designations.items():
                 if self.update_device_designation(device_id, final_designation):
                     designation_success_count += 1
 
             self.logger.info(f"Successfully updated {designation_success_count} out of {len(final_designations)} device designations")
-            self.logger.info(f"Skipped {terminal_devices_skipped} terminal devices (designations unchanged)")
+            self.logger.info(f"Skipped {terminal_devices_skipped} terminal devices and {cables_skipped} cables (designations unchanged)")
 
         except Exception as e:
             self.logger.error(f"Error in process_devices: {e}")
@@ -676,3 +644,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
