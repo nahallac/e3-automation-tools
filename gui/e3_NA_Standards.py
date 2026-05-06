@@ -37,6 +37,12 @@ except ImportError as e:
     print("Make sure all required modules are in the lib folder.")
     sys.exit(1)
 
+try:
+    from lib.window_icon import set_window_icon
+except ImportError:
+    def set_window_icon(root, icon_name):
+        return False
+
 # Try to import theme utilities (optional)
 try:
     from lib.theme_utils import apply_theme
@@ -80,6 +86,7 @@ class E3AutomationGUI(ctk.CTk):
         
         # Configure window
         self.title("E3 NA Standards Automation")
+        set_window_icon(self, "e3_na_standards")
         self.geometry("900x600")
         self.minsize(800, 500)
         
