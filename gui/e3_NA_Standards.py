@@ -28,6 +28,7 @@ try:
     from lib.e3_terminal_pin_names import run_terminal_pin_name_automation
     from lib.e3_wire_core_sync import WireCoreSynchronizer
     from lib.e3_wire_numbering import run_wire_number_automation
+    from lib.e3_field_connection import run_field_connection_automation
     from lib.e3_selector_widget import E3SelectorWidget
 except ImportError as exc:
     print(f"Error importing required modules: {exc}")
@@ -78,8 +79,8 @@ class E3AutomationGUI(ctk.CTk):
 
         self.title("E3 NA Standards Automation")
         set_window_icon(self, "e3_na_standards")
-        self.geometry("1000x640")
-        self.minsize(860, 520)
+        self.geometry("1200x640")
+        self.minsize(1060, 520)
 
         apply_theme("red", "dark")
 
@@ -119,7 +120,7 @@ class E3AutomationGUI(ctk.CTk):
         # Buttons
         btn_frame = ctk.CTkFrame(self)
         btn_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
-        btn_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+        btn_frame.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
 
         red_btn = {
             "width": 190, "height": 60,
@@ -151,14 +152,20 @@ class E3AutomationGUI(ctk.CTk):
         )
         self.wire_core_sync_btn.grid(row=0, column=3, padx=8, pady=18)
 
+        self.field_connection_btn = ctk.CTkButton(
+            btn_frame, text="Set Field\nConnections",
+            command=self.run_field_connection, **red_btn
+        )
+        self.field_connection_btn.grid(row=0, column=4, padx=8, pady=18)
+
         self.run_all_btn = ctk.CTkButton(
             btn_frame,
-            text="Run All\n(Wire → Core → Device → Terminal)",
+            text="Run All\n(Wire → Core → Device → Terminal → Field)",
             command=self.run_all_automation,
             width=210, height=60, font=("Arial", 11, "bold"),
             fg_color="#2AA876", hover_color="#1F8A5F",
         )
-        self.run_all_btn.grid(row=0, column=4, padx=8, pady=18)
+        self.run_all_btn.grid(row=0, column=5, padx=8, pady=18)
 
         # Log area
         log_frame = ctk.CTkFrame(self)
@@ -216,7 +223,8 @@ class E3AutomationGUI(ctk.CTk):
         state = "normal" if enabled else "disabled"
         for btn in (
             self.device_designation_btn, self.terminal_pin_btn,
-            self.wire_numbers_btn, self.wire_core_sync_btn, self.run_all_btn,
+            self.wire_numbers_btn, self.wire_core_sync_btn,
+            self.field_connection_btn, self.run_all_btn,
         ):
             btn.configure(state=state)
 
@@ -303,6 +311,9 @@ class E3AutomationGUI(ctk.CTk):
     def run_wire_core_sync(self):
         self._start_operation(self._wire_core_sync_operation, "Wire Core Synchronization")
 
+    def run_field_connection(self):
+        self._start_operation(run_field_connection_automation, "Field Connection Tagging")
+
     # ------------------------------------------------------------------
     # Run All
     # ------------------------------------------------------------------
@@ -328,11 +339,13 @@ class E3AutomationGUI(ctk.CTk):
             (self._wire_core_sync_operation,    "Wire Core Synchronization"),
             (run_device_designation_automation, "Device Designation Automation"),
             (run_terminal_pin_name_automation,  "Terminal Pin Name Automation"),
+            (run_field_connection_automation,   "Field Connection Tagging"),
         ]
 
+        total = len(operations)
         for i, (func, name) in enumerate(operations, 1):
-            self.after(0, self._set_status, f"Running {name} ({i}/4)...", "#FFA500")
-            self.logger.info(f"Starting {name} ({i}/4)")
+            self.after(0, self._set_status, f"Running {name} ({i}/{total})...", "#FFA500")
+            self.logger.info(f"Starting {name} ({i}/{total})")
             try:
                 success = func(self.logger, pid)
             except Exception as exc:
