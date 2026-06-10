@@ -29,6 +29,7 @@ try:
     from lib.e3_wire_core_sync import WireCoreSynchronizer
     from lib.e3_wire_numbering import run_wire_number_automation
     from lib.e3_field_connection import run_field_connection_automation
+    from lib.e3_panel_path_levels import run_panel_path_level_automation
     from lib.e3_selector_widget import E3SelectorWidget
 except ImportError as exc:
     print(f"Error importing required modules: {exc}")
@@ -120,7 +121,7 @@ class E3AutomationGUI(ctk.CTk):
         # Buttons
         btn_frame = ctk.CTkFrame(self)
         btn_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
-        btn_frame.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        btn_frame.grid_columnconfigure((0, 1, 2, 3, 4, 5, 6), weight=1)
 
         red_btn = {
             "width": 190, "height": 60,
@@ -158,14 +159,20 @@ class E3AutomationGUI(ctk.CTk):
         )
         self.field_connection_btn.grid(row=0, column=4, padx=8, pady=18)
 
+        self.panel_path_levels_btn = ctk.CTkButton(
+            btn_frame, text="Move Panel\nConnect Lines",
+            command=self.run_panel_path_levels, **red_btn
+        )
+        self.panel_path_levels_btn.grid(row=0, column=5, padx=8, pady=18)
+
         self.run_all_btn = ctk.CTkButton(
             btn_frame,
-            text="Run All\n(Wire → Core → Device → Terminal → Field)",
+            text="Run All\n(Wire → Core → Device → Terminal → Field → Panel)",
             command=self.run_all_automation,
             width=210, height=60, font=("Arial", 11, "bold"),
             fg_color="#2AA876", hover_color="#1F8A5F",
         )
-        self.run_all_btn.grid(row=0, column=5, padx=8, pady=18)
+        self.run_all_btn.grid(row=0, column=6, padx=8, pady=18)
 
         # Log area
         log_frame = ctk.CTkFrame(self)
@@ -224,7 +231,8 @@ class E3AutomationGUI(ctk.CTk):
         for btn in (
             self.device_designation_btn, self.terminal_pin_btn,
             self.wire_numbers_btn, self.wire_core_sync_btn,
-            self.field_connection_btn, self.run_all_btn,
+            self.field_connection_btn, self.panel_path_levels_btn,
+            self.run_all_btn,
         ):
             btn.configure(state=state)
 
@@ -314,6 +322,9 @@ class E3AutomationGUI(ctk.CTk):
     def run_field_connection(self):
         self._start_operation(run_field_connection_automation, "Field Connection Tagging")
 
+    def run_panel_path_levels(self):
+        self._start_operation(run_panel_path_level_automation, "Panel Path Level Move")
+
     # ------------------------------------------------------------------
     # Run All
     # ------------------------------------------------------------------
@@ -340,6 +351,7 @@ class E3AutomationGUI(ctk.CTk):
             (run_device_designation_automation, "Device Designation Automation"),
             (run_terminal_pin_name_automation,  "Terminal Pin Name Automation"),
             (run_field_connection_automation,   "Field Connection Tagging"),
+            (run_panel_path_level_automation,   "Panel Path Level Move"),
         ]
 
         total = len(operations)
