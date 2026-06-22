@@ -40,6 +40,7 @@ class WireNumberAssigner:
         self.signal = None
         self.net = None
         self.net_segment = None
+        self.symbol = None
         self.logger = logger or logging.getLogger(__name__)
         self.e3_pid = e3_pid
         
@@ -65,6 +66,7 @@ class WireNumberAssigner:
                 self.signal = objects['signal']
                 self.net = objects['net']
                 self.net_segment = objects['net_segment']
+                self.symbol = objects['symbol']
                 return True
             else:
                 return False
@@ -247,13 +249,14 @@ class WireNumberAssigner:
             self.logger.debug(f"Connection {connection_id} has {len(actual_pin_ids)} valid pins")
 
             for pin_id in actual_pin_ids:
-                page_number, grid_position, _, x_coord, y_coord = self.get_pin_location_info(pin_id)
+                page_number, grid_position, sheet_id, x_coord, y_coord = self.get_pin_location_info(pin_id)
                 if page_number is not None and grid_position is not None:
                     wire_number = self.calculate_wire_number(page_number, grid_position)
                     wire_data.append({
                         'wire_number': wire_number,
                         'x_coord': x_coord if x_coord is not None else 0,
                         'y_coord': y_coord if y_coord is not None else 0,
+                        'sheet_id': sheet_id,
                         'pin_id': pin_id
                     })
                     self.logger.debug(f"Pin {pin_id}: Page {page_number}, Grid {grid_position} -> Wire {wire_number}, X={x_coord}, Y={y_coord}")
@@ -332,6 +335,85 @@ class WireNumberAssigner:
             self.logger.error(f"Error checking FixWireName attribute for connection {connection_id}: {e}")
             return False
 
+    def _unpack_id_tuple(self, result):
+        """Unpack an E3 (count, ids) getter result into a clean list of ids.
+
+        E3 array getters return (count, tuple_of_ids); tuple_of_ids may be a
+        single value when there is exactly one. Filters out None and 0.
+        """
+        if not result:
+            return []
+
+        if isinstance(result, tuple) and len(result) >= 2:
+            ids = result[1]
+            if isinstance(ids, tuple):
+                return [i for i in ids if i is not None and i != 0]
+            if ids is not None and ids != 0:
+                return [ids]
+            return []
+
+        self.logger.warning(f"Unexpected id-tuple format: {type(result)}")
+        return []
+
+    def get_destination_sheet_ids(self, connection_ids):
+        """Return the set of sheet IDs that carry a destination ("to") arrow.
+
+        NA standards: a wire number must come from the net that originated the
+        wire (the source / "from" side). A signal that continues across pages via
+        signal arrows spans an origin sheet (source / "from" arrow) and one or
+        more continuation sheets (each with a destination / "to" arrow). Candidate
+        wire-number positions on a continuation sheet must be excluded so the
+        number is taken from the origin.
+
+        A single E3 jump connection straddles both pages (a pin on each), and its
+        GetReferenceSymbolIds returns BOTH the source and destination symbols of
+        the pair, so direction alone cannot identify the origin. Instead, each
+        destination symbol's own schema location gives the continuation sheet, and
+        any candidate position on that sheet is excluded.
+
+        Detection uses e3Connection.GetReferenceSymbolIds (the "jump" symbols on
+        the net), e3Symbol.GetSheetReferenceInfo (``inout``: 1=Source, 2=Destination,
+        3=both), and e3Symbol.GetSchemaLocation (the symbol's sheet). Errors are
+        swallowed so numbering is never blocked.
+        """
+        destination_sheet_ids = set()
+
+        for connection_id in connection_ids:
+            try:
+                self.connection.SetId(connection_id)
+                ref_symbol_ids = self._unpack_id_tuple(self.connection.GetReferenceSymbolIds())
+
+                for sym_id in ref_symbol_ids:
+                    try:
+                        self.symbol.SetId(sym_id)
+
+                        # Defensive guard: only reference (28) / arrow (1) symbols.
+                        if self.symbol.GetSymbolType() not in (1, 28):
+                            continue
+
+                        ref_info = self.symbol.GetSheetReferenceInfo()
+                        # Expected shape: (retval, inout, type, refnam, signam)
+                        if not isinstance(ref_info, tuple) or len(ref_info) < 2:
+                            self.logger.debug(f"Unexpected GetSheetReferenceInfo result for symbol {sym_id}: {ref_info}")
+                            continue
+
+                        retval, inout = ref_info[0], ref_info[1]
+                        if not retval or inout not in (2, 3):
+                            continue  # not a destination ("to") arrow
+
+                        loc = self.symbol.GetSchemaLocation()
+                        if isinstance(loc, tuple) and len(loc) >= 1 and loc[0] and loc[0] > 0:
+                            destination_sheet_ids.add(loc[0])
+                            self.logger.debug(f"Destination ('to') arrow {sym_id} on sheet {loc[0]} (connection {connection_id})")
+
+                    except Exception as e:
+                        self.logger.debug(f"Error inspecting reference symbol {sym_id} on connection {connection_id}: {e}")
+
+            except Exception as e:
+                self.logger.debug(f"Error reading reference symbols for connection {connection_id}: {e}")
+
+        return destination_sheet_ids
+
     def process_connections(self):
         """Process all connections in the project"""
         try:
@@ -390,7 +472,7 @@ class WireNumberAssigner:
 
             for signal_name, connection_ids in signal_connections.items():
                 try:
-                    # Collect all wire numbers and positions for this signal
+                    # Collect all wire numbers and positions for this signal.
                     all_wire_data = []
                     all_net_segments = []
 
@@ -404,10 +486,27 @@ class WireNumberAssigner:
                         all_net_segments.extend(net_segment_ids)
 
                     if all_wire_data:
+                        # NA standards: the wire number must come from the net that
+                        # originated the wire (the source / "from" side). Exclude any
+                        # candidate position on a sheet that carries a destination
+                        # ("to") arrow; what remains is the origin net. Fall back to
+                        # all positions when no clear origin can be identified.
+                        destination_sheet_ids = self.get_destination_sheet_ids(connection_ids)
+                        origin_wire_data = [
+                            wd for wd in all_wire_data
+                            if wd.get('sheet_id') not in destination_sheet_ids
+                        ] if destination_sheet_ids else all_wire_data
+
+                        candidate_wire_data = origin_wire_data if origin_wire_data else all_wire_data
+                        if destination_sheet_ids and not origin_wire_data:
+                            self.logger.debug(f"Signal '{signal_name}' has no origin-side positions; falling back to all positions")
+                        elif destination_sheet_ids:
+                            self.logger.debug(f"Signal '{signal_name}' excluded continuation sheets {destination_sheet_ids} from wire-number selection")
+
                         # Find the wire data with the lowest wire number for this signal
                         # Use the same sorting logic as get_lowest_wire_number
-                        all_wire_data.sort(key=lambda x: self.wire_number_sort_key(x['wire_number']))
-                        lowest_wire_data = all_wire_data[0]
+                        candidate_wire_data.sort(key=lambda x: self.wire_number_sort_key(x['wire_number']))
+                        lowest_wire_data = candidate_wire_data[0]
 
                         # Store signal data for later processing
                         signal_data.append({
@@ -502,6 +601,7 @@ class WireNumberAssigner:
             self.signal = None
             self.net = None
             self.net_segment = None
+            self.symbol = None
             # Uninitialize COM
             try:
                 pythoncom.CoUninitialize()
