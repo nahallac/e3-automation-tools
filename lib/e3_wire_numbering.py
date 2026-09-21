@@ -355,6 +355,72 @@ class WireNumberAssigner:
         self.logger.warning(f"Unexpected id-tuple format: {type(result)}")
         return []
 
+    def get_connection_signal_name(self, connection_id):
+        """Return the signal name of a connection, falling back to its pins.
+
+        On a multi-core net (several wires sharing one drawn line), a connection
+        that carries no core of its own reports an empty GetSignalName even though
+        its pins are on the signal. Use the pins' signal when they all agree.
+        """
+        self.connection.SetId(connection_id)
+        signal_name = self.connection.GetSignalName()
+        if signal_name:
+            return signal_name
+
+        pin_signals = set()
+        for pin_id in self._unpack_id_tuple(self.connection.GetPinIds()):
+            self.pin.SetId(pin_id)
+            pin_signals.add(self.pin.GetSignalName())
+
+        if len(pin_signals) == 1:
+            signal_name = pin_signals.pop()
+            if signal_name:
+                self.logger.debug(f"Connection {connection_id} has no signal name; using pin signal '{signal_name}'")
+                return signal_name
+
+        return ""
+
+    def get_shared_net_segments(self, connection_ids, signal_name):
+        """Return every net segment of the nets these connections belong to.
+
+        On a multi-core net the shared trunk segments belong to no single
+        connection, so e3Connection.GetNetSegmentIds never returns them. A net is
+        only included when all of its pins are on this signal, so a segment is
+        never given another signal's wire number.
+        """
+        net_ids = set()
+        for connection_id in connection_ids:
+            try:
+                self.connection.SetId(connection_id)
+                net_id = self.connection.GetNetId()
+                if net_id and net_id > 0:
+                    net_ids.add(net_id)
+            except Exception as e:
+                self.logger.debug(f"Error getting net for connection {connection_id}: {e}")
+
+        net_segment_ids = []
+        for net_id in net_ids:
+            try:
+                self.net.SetId(net_id)
+                pin_ids = self._unpack_id_tuple(self.net.GetPinIds())
+
+                pin_signals = set()
+                for pin_id in pin_ids:
+                    self.pin.SetId(pin_id)
+                    pin_signals.add(self.pin.GetSignalName())
+
+                if pin_signals != {signal_name}:
+                    self.logger.debug(f"Net {net_id} carries signals {pin_signals}; not extending '{signal_name}' to its shared segments")
+                    continue
+
+                self.net.SetId(net_id)
+                net_segment_ids.extend(self._unpack_id_tuple(self.net.GetNetSegmentIds()))
+
+            except Exception as e:
+                self.logger.debug(f"Error getting shared net segments for net {net_id}: {e}")
+
+        return net_segment_ids
+
     def get_destination_sheet_ids(self, connection_ids):
         """Return the set of sheet IDs that carry a destination ("to") arrow.
 
@@ -457,8 +523,7 @@ class WireNumberAssigner:
                         self.logger.info(f"Skipping connection {conn_id} - has FixWireName attribute set")
                         continue
 
-                    self.connection.SetId(conn_id)
-                    signal_name = self.connection.GetSignalName()
+                    signal_name = self.get_connection_signal_name(conn_id)
 
                     if signal_name:  # Only process connections with valid signal names
                         signal_connections[signal_name].append(conn_id)
@@ -484,6 +549,9 @@ class WireNumberAssigner:
                         # Get all net segments for this connection
                         net_segment_ids = self.get_net_segments_for_connection(conn_id)
                         all_net_segments.extend(net_segment_ids)
+
+                    # Multi-core nets: pick up the shared trunk segments too
+                    all_net_segments.extend(self.get_shared_net_segments(connection_ids, signal_name))
 
                     if all_wire_data:
                         # NA standards: the wire number must come from the net that
