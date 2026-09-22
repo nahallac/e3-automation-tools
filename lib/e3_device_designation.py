@@ -696,9 +696,12 @@ class DeviceDesignationManager:
             self.logger.info("Setting cable designations")
             targets = self.plan_cable_designations()
 
-            # Where every cable is right now, keyed the way E3 checks uniqueness
+            # Where every cable is right now, keyed the way E3 checks uniqueness.
+            # Cables that are not being renamed (nothing connected) still hold
+            # their names, so they are in the map too.
+            from .e3_terminal_blocks import _unpack_ids
             place: Dict[int, Tuple[str, str, str]] = {}
-            for cable_id in targets:
+            for cable_id in _unpack_ids(self.job.GetCableIds()):
                 self.device.SetId(cable_id)
                 place[cable_id] = (str(self.device.GetName() or "").lstrip("-"),
                                    str(self.device.GetAssignment() or ""),
