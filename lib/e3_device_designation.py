@@ -12,9 +12,12 @@ For devices with conflicting designations, letter suffixes (A, B, C, etc.) are a
 similar to the wire numbering logic.
 
 Special handling for terminal devices:
-- Terminal devices (identified using E3 API methods IsTerminal() and IsTerminalBlock()) are completely skipped
-- Terminal devices do not get their designations renamed and are ignored by this script
+- Terminal devices (identified using E3 API methods IsTerminal() and IsTerminalBlock()) are skipped by the
+  sheet-and-grid designation pass
 - Fallback to letter code detection (T, TB, X, XT, TERM) if API methods fail
+- Each terminal strip is then named -TB<sheet>, after the lowest sheet any of its schematic symbols
+  is placed on (e3_terminal_blocks.name_strips_by_sheet); strips with nothing placed keep their name
+- Ground bars (every terminal's component DeviceLetterCode is GND) are named -GND<sheet> instead
 
 Cable handling:
 - Cables are retrieved using e3Job.GetCableIds() and processed as devices
@@ -567,6 +570,188 @@ class DeviceDesignationManager:
         except Exception as e:
             self.logger.error(f"Error in process_devices: {e}")
 
+    def process_terminal_strips(self):
+        """Name each terminal strip -TB<sheet> (-GND<sheet> for ground bars), after its lowest sheet"""
+        try:
+            from .e3_terminal_blocks import name_strips_by_sheet
+            self.logger.info("Naming terminal strips by sheet")
+            name_strips_by_sheet(self.app, self.job, self.logger)
+        except Exception as e:
+            self.logger.error(f"Error in process_terminal_strips: {e}")
+
+    def get_cable_lowest_position(self, cable_id: int, pin, end_pin) -> Optional[dict]:
+        """
+        Find the lowest sheet-and-grid position any conductor of a cable reaches.
+
+        A conductor has no symbol of its own, so its position is that of the pins it
+        ends on - the same positions the wire numbers are built from. Conductors come
+        from GetPinIds(); GetCoreIds() answers empty for cables in this API wrapper.
+        Within the lowest grid the leftmost, then topmost, pin end wins, so cables
+        sharing a grid are ordered the way they read on the sheet.
+
+        Returns:
+            {'sheet', 'grid', 'x', 'y'} of that pin end, or None when no conductor is connected
+        """
+        from .e3_terminal_blocks import _sheet_order, _unpack_ids
+
+        self.device.SetId(cable_id)
+        lowest = None
+        for core_id in _unpack_ids(self.device.GetPinIds()):
+            try:
+                pin.SetId(core_id)
+                for which in (1, 2):
+                    end_id = pin.GetEndPinId(which)
+                    if isinstance(end_id, tuple):
+                        end_id = end_id[0]
+                    if not end_id or not end_pin.SetId(end_id):
+                        continue
+                    loc = end_pin.GetSchemaLocation()
+                    if not loc or len(loc) < 4 or not isinstance(loc[0], int) or loc[0] <= 0:
+                        continue
+                    self.sheet.SetId(loc[0])
+                    sheet_name = str(self.sheet.GetName() or "")
+                    grid = self.extract_grid_position(str(loc[3] or ""))
+                    if not sheet_name or not grid:
+                        continue
+                    x = loc[1] if isinstance(loc[1], (int, float)) else 0.0
+                    y = loc[2] if isinstance(loc[2], (int, float)) else 0.0
+                    # Sheet, then grid, then left to right, then top to bottom (E3 y grows upward)
+                    key = (_sheet_order(sheet_name), _sheet_order(grid), x, -y)
+                    if lowest is None or key < lowest[0]:
+                        lowest = (key, {'sheet': sheet_name, 'grid': grid, 'x': x, 'y': y})
+            except Exception as e:
+                self.logger.debug(f"Conductor {core_id} of cable {cable_id} position unreadable: {e}")
+
+        return lowest[1] if lowest else None
+
+    def plan_cable_designations(self) -> Dict[int, str]:
+        """
+        Work out every cable's designation without writing anything.
+
+        The format matches the other devices - {letter code}{sheet}{grid} - taken from
+        the lowest position any of the cable's conductors reaches. Cables landing on one
+        position get .A/.B suffixes in left-to-right order across the sheet (then top to
+        bottom), so the suffixes read the way the drawing does.
+
+        Returns:
+            Dictionary mapping cable device ID to its designation
+        """
+        from .e3_terminal_blocks import _unpack_ids
+
+        pin = self.job.CreatePinObject()
+        end_pin = self.job.CreatePinObject()
+        designations: Dict[str, List[Tuple[float, float, int]]] = {}   # base -> [(x, -y, cable_id)]
+        unconnected = 0
+
+        for cable_id in _unpack_ids(self.job.GetCableIds()):
+            try:
+                self.device.SetId(cable_id)
+                if self.device.IsWireGroup() == 1:
+                    continue   # loose wires, not a cable - the wire numbers cover those
+                letter_code = self.get_device_letter_code(cable_id)
+                pos = self.get_cable_lowest_position(cable_id, pin, end_pin)
+                if not letter_code or pos is None:
+                    unconnected += 1
+                    continue
+                base = self.generate_device_designation(letter_code, pos['sheet'], pos['grid'])
+                designations.setdefault(base, []).append((pos['x'], -pos['y'], cable_id))
+            except Exception as e:
+                self.logger.error(f"Error processing cable {cable_id}: {e}")
+
+        self.logger.info(f"{sum(len(v) for v in designations.values())} connected cable(s), "
+                         f"{unconnected} with no connected conductor (designation unchanged)")
+
+        final: Dict[int, str] = {}
+        for base, entries in designations.items():
+            entries.sort()   # left to right, then top to bottom, then cable id
+            if len(entries) > 1:
+                self.logger.info(f"{len(entries)} cables at '{base}', suffixing left to right")
+            for i, (_, _, cable_id) in enumerate(entries):
+                final[cable_id] = base if i == 0 else f"{base}.{chr(ord('A') + i - 1)}"
+        return final
+
+    def _rename_cable(self, cable_id: int, designation: str) -> bool:
+        """Rename one cable and read the name back - SetName's return value says nothing."""
+        self.device.SetId(cable_id)
+        current = str(self.device.GetName() or "")
+        self.device.SetName(designation)
+        self.device.SetId(cable_id)
+        now = str(self.device.GetName() or "")
+        if now.lstrip("-") == designation.lstrip("-"):
+            self.logger.info(f"Cable {current} -> {now}")
+            return True
+        self.logger.warning(f"Cable {current}: not renamed to {designation} (E3 kept '{now}')")
+        return False
+
+    def process_cables(self):
+        """
+        Designate every cable from the lowest position of its conductors.
+
+        E3 refuses a designation another cable in the same assignment and location
+        already holds, so a name is only written once it is free. Cables trading names
+        (a re-run that reorders the .A/.B suffixes) form a cycle where nothing is free;
+        one of them is parked on a temporary name to break it.
+        """
+        try:
+            self.logger.info("Setting cable designations")
+            targets = self.plan_cable_designations()
+
+            # Where every cable is right now, keyed the way E3 checks uniqueness
+            place: Dict[int, Tuple[str, str, str]] = {}
+            for cable_id in targets:
+                self.device.SetId(cable_id)
+                place[cable_id] = (str(self.device.GetName() or "").lstrip("-"),
+                                   str(self.device.GetAssignment() or ""),
+                                   str(self.device.GetLocation() or ""))
+            held = {key: cid for cid, key in place.items()}
+
+            pending = {cid: name for cid, name in targets.items()
+                       if place[cid][0] != name.lstrip("-")}
+            unchanged = len(targets) - len(pending)
+            updated = failed = 0
+            parked = set()
+
+            def key_for(cid, name):
+                return (name.lstrip("-"), place[cid][1], place[cid][2])
+
+            def apply(cid, name) -> bool:
+                if not self._rename_cable(cid, name):
+                    return False
+                held.pop(place[cid], None)
+                place[cid] = key_for(cid, name)
+                held[place[cid]] = cid
+                return True
+
+            while pending:
+                free = [cid for cid, name in pending.items() if key_for(cid, name) not in held]
+                if free:
+                    for cid in free:
+                        if apply(cid, pending.pop(cid)):
+                            updated += 1
+                        else:
+                            failed += 1
+                            if cid in parked:
+                                self.logger.warning(f"Cable {cid} left on its temporary name - rename it by hand")
+                    continue
+
+                # Every remaining target is held.  If the holder is itself waiting to
+                # move, park it on a throwaway name and the cycle opens up.
+                blocker = next((held[key_for(cid, name)] for cid, name in pending.items()), 0)
+                if blocker in pending and blocker not in parked:
+                    parked.add(blocker)
+                    if apply(blocker, f"{pending[blocker]}.TMP{blocker}"):
+                        continue
+
+                for cid, name in pending.items():
+                    self.logger.warning(f"Cable {place[cid][0]}: not renamed to {name} - "
+                                        "another cable already has that designation")
+                    failed += 1
+                break
+
+            self.logger.info(f"Cables renamed: {updated}, already correct: {unchanged}, failed: {failed}")
+        except Exception as e:
+            self.logger.error(f"Error in process_cables: {e}")
+
     def run(self):
         """Main execution method"""
         try:
@@ -576,6 +761,8 @@ class DeviceDesignationManager:
                 return False
 
             self.process_devices()
+            self.process_terminal_strips()
+            self.process_cables()
 
             self.logger.info("Device designation automation completed")
             return True
