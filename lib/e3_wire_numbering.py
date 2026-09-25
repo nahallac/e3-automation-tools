@@ -12,7 +12,10 @@ sorting that considers both page numbers and grid positions numerically.
 Each signal gets a unique wire number, and ALL segments and connections
 belonging to the same signal receive the same wire number. When multiple
 signals share the same base wire number (same grid position), letter
-suffixes (.A, .B, .C, etc.) are assigned based on left-to-right position.
+suffixes (.A, .B, .C, etc.) are assigned in drawing reading order: left to
+right, then top to bottom. Each signal is placed by its first pin in that
+order among the pins that sit in the winning grid cell, so identical devices
+wired the same way always number the same way.
 
 Connections with the "FixWireName" net attribute set will be skipped and
 their wire numbers will not be modified.
@@ -272,6 +275,21 @@ class WireNumberAssigner:
         wire_data = self.get_connection_wire_numbers_and_positions(connection_id)
         return [data['wire_number'] for data in wire_data]
     
+    def reading_order_key(self, wire_data):
+        """Sort key placing a pin position in drawing reading order.
+
+        Left to right, then top to bottom (E3 y grows upward). Coordinates are
+        rounded so pins on one symbol column compare equal in x instead of
+        being separated by float noise.
+        """
+        return (round(wire_data['x_coord'], 3), -round(wire_data['y_coord'], 3))
+
+    def _natural_key(self, text):
+        """Sort key that orders embedded numbers numerically (10 after 9)."""
+        import re
+        return [int(part) if part.isdigit() else part.upper()
+                for part in re.split(r'(\d+)', str(text or ''))]
+
     def get_lowest_wire_number(self, wire_numbers):
         """Get the lowest wire number from a list"""
         if not wire_numbers:
@@ -571,9 +589,13 @@ class WireNumberAssigner:
                         elif destination_sheet_ids:
                             self.logger.debug(f"Signal '{signal_name}' excluded continuation sheets {destination_sheet_ids} from wire-number selection")
 
-                        # Find the wire data with the lowest wire number for this signal
-                        # Use the same sorting logic as get_lowest_wire_number
-                        candidate_wire_data.sort(key=lambda x: self.wire_number_sort_key(x['wire_number']))
+                        # Find the wire data with the lowest wire number for this signal.
+                        # Several of the signal's pins can sit in that same grid cell
+                        # (both sides of a splitter block, a pass-through terminal);
+                        # take the first of them in reading order so the position used
+                        # for suffixing never depends on E3's pin enumeration order.
+                        candidate_wire_data.sort(key=lambda x: (self.wire_number_sort_key(x['wire_number']),
+                                                                self.reading_order_key(x)))
                         lowest_wire_data = candidate_wire_data[0]
 
                         # Store signal data for later processing
@@ -598,9 +620,11 @@ class WireNumberAssigner:
             for signal_info in signal_data:
                 wire_number_groups[signal_info['base_wire_number']].append(signal_info)
 
-            # Sort each group by X coordinate (left to right) then Y coordinate (top to bottom)
+            # Sort each group in reading order: left to right, then top to bottom
+            # (E3 y grows upward). Signal name breaks exact ties so the result is
+            # the same on every run.
             for base_wire_number, signals in wire_number_groups.items():
-                signals.sort(key=lambda x: (x['x_coord'], x['y_coord']))
+                signals.sort(key=lambda x: (self.reading_order_key(x), self._natural_key(x['signal_name'])))
 
             # Third pass: assign unique wire numbers to each signal
             updated_count = 0
