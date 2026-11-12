@@ -1,10 +1,10 @@
 # E3.series Automation Tools Dependencies
 
 # Core Windows COM interface for E3.series
-pywin32==306
+pywin32
 
 # E3.series Python API
 e3series
 
 # GUI framework for NA Standards app
-customtkinter==5.2.1
+customtkinter

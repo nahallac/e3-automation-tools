@@ -12,7 +12,10 @@ sorting that considers both page numbers and grid positions numerically.
 Each signal gets a unique wire number, and ALL segments and connections
 belonging to the same signal receive the same wire number. When multiple
 signals share the same base wire number (same grid position), letter
-suffixes (.A, .B, .C, etc.) are assigned based on left-to-right position.
+suffixes (.A, .B, .C, etc.) are assigned in drawing reading order: left to
+right, then top to bottom. Each signal is placed by its first pin in that
+order among the pins that sit in the winning grid cell, so identical devices
+wired the same way always number the same way.
 
 Connections with the "FixWireName" net attribute set will be skipped and
 their wire numbers will not be modified.
@@ -40,6 +43,7 @@ class WireNumberAssigner:
         self.signal = None
         self.net = None
         self.net_segment = None
+        self.symbol = None
         self.logger = logger or logging.getLogger(__name__)
         self.e3_pid = e3_pid
         
@@ -65,6 +69,7 @@ class WireNumberAssigner:
                 self.signal = objects['signal']
                 self.net = objects['net']
                 self.net_segment = objects['net_segment']
+                self.symbol = objects['symbol']
                 return True
             else:
                 return False
@@ -247,13 +252,14 @@ class WireNumberAssigner:
             self.logger.debug(f"Connection {connection_id} has {len(actual_pin_ids)} valid pins")
 
             for pin_id in actual_pin_ids:
-                page_number, grid_position, _, x_coord, y_coord = self.get_pin_location_info(pin_id)
+                page_number, grid_position, sheet_id, x_coord, y_coord = self.get_pin_location_info(pin_id)
                 if page_number is not None and grid_position is not None:
                     wire_number = self.calculate_wire_number(page_number, grid_position)
                     wire_data.append({
                         'wire_number': wire_number,
                         'x_coord': x_coord if x_coord is not None else 0,
                         'y_coord': y_coord if y_coord is not None else 0,
+                        'sheet_id': sheet_id,
                         'pin_id': pin_id
                     })
                     self.logger.debug(f"Pin {pin_id}: Page {page_number}, Grid {grid_position} -> Wire {wire_number}, X={x_coord}, Y={y_coord}")
@@ -269,6 +275,21 @@ class WireNumberAssigner:
         wire_data = self.get_connection_wire_numbers_and_positions(connection_id)
         return [data['wire_number'] for data in wire_data]
     
+    def reading_order_key(self, wire_data):
+        """Sort key placing a pin position in drawing reading order.
+
+        Left to right, then top to bottom (E3 y grows upward). Coordinates are
+        rounded so pins on one symbol column compare equal in x instead of
+        being separated by float noise.
+        """
+        return (round(wire_data['x_coord'], 3), -round(wire_data['y_coord'], 3))
+
+    def _natural_key(self, text):
+        """Sort key that orders embedded numbers numerically (10 after 9)."""
+        import re
+        return [int(part) if part.isdigit() else part.upper()
+                for part in re.split(r'(\d+)', str(text or ''))]
+
     def get_lowest_wire_number(self, wire_numbers):
         """Get the lowest wire number from a list"""
         if not wire_numbers:
@@ -332,6 +353,151 @@ class WireNumberAssigner:
             self.logger.error(f"Error checking FixWireName attribute for connection {connection_id}: {e}")
             return False
 
+    def _unpack_id_tuple(self, result):
+        """Unpack an E3 (count, ids) getter result into a clean list of ids.
+
+        E3 array getters return (count, tuple_of_ids); tuple_of_ids may be a
+        single value when there is exactly one. Filters out None and 0.
+        """
+        if not result:
+            return []
+
+        if isinstance(result, tuple) and len(result) >= 2:
+            ids = result[1]
+            if isinstance(ids, tuple):
+                return [i for i in ids if i is not None and i != 0]
+            if ids is not None and ids != 0:
+                return [ids]
+            return []
+
+        self.logger.warning(f"Unexpected id-tuple format: {type(result)}")
+        return []
+
+    def get_connection_signal_name(self, connection_id):
+        """Return the signal name of a connection, falling back to its pins.
+
+        On a multi-core net (several wires sharing one drawn line), a connection
+        that carries no core of its own reports an empty GetSignalName even though
+        its pins are on the signal. Use the pins' signal when they all agree.
+        """
+        self.connection.SetId(connection_id)
+        signal_name = self.connection.GetSignalName()
+        if signal_name:
+            return signal_name
+
+        pin_signals = set()
+        for pin_id in self._unpack_id_tuple(self.connection.GetPinIds()):
+            self.pin.SetId(pin_id)
+            pin_signals.add(self.pin.GetSignalName())
+
+        if len(pin_signals) == 1:
+            signal_name = pin_signals.pop()
+            if signal_name:
+                self.logger.debug(f"Connection {connection_id} has no signal name; using pin signal '{signal_name}'")
+                return signal_name
+
+        return ""
+
+    def get_shared_net_segments(self, connection_ids, signal_name):
+        """Return every net segment of the nets these connections belong to.
+
+        On a multi-core net the shared trunk segments belong to no single
+        connection, so e3Connection.GetNetSegmentIds never returns them. A net is
+        only included when all of its pins are on this signal, so a segment is
+        never given another signal's wire number.
+        """
+        net_ids = set()
+        for connection_id in connection_ids:
+            try:
+                self.connection.SetId(connection_id)
+                net_id = self.connection.GetNetId()
+                if net_id and net_id > 0:
+                    net_ids.add(net_id)
+            except Exception as e:
+                self.logger.debug(f"Error getting net for connection {connection_id}: {e}")
+
+        net_segment_ids = []
+        for net_id in net_ids:
+            try:
+                self.net.SetId(net_id)
+                pin_ids = self._unpack_id_tuple(self.net.GetPinIds())
+
+                pin_signals = set()
+                for pin_id in pin_ids:
+                    self.pin.SetId(pin_id)
+                    pin_signals.add(self.pin.GetSignalName())
+
+                if pin_signals != {signal_name}:
+                    self.logger.debug(f"Net {net_id} carries signals {pin_signals}; not extending '{signal_name}' to its shared segments")
+                    continue
+
+                self.net.SetId(net_id)
+                net_segment_ids.extend(self._unpack_id_tuple(self.net.GetNetSegmentIds()))
+
+            except Exception as e:
+                self.logger.debug(f"Error getting shared net segments for net {net_id}: {e}")
+
+        return net_segment_ids
+
+    def get_destination_sheet_ids(self, connection_ids):
+        """Return the set of sheet IDs that carry a destination ("to") arrow.
+
+        NA standards: a wire number must come from the net that originated the
+        wire (the source / "from" side). A signal that continues across pages via
+        signal arrows spans an origin sheet (source / "from" arrow) and one or
+        more continuation sheets (each with a destination / "to" arrow). Candidate
+        wire-number positions on a continuation sheet must be excluded so the
+        number is taken from the origin.
+
+        A single E3 jump connection straddles both pages (a pin on each), and its
+        GetReferenceSymbolIds returns BOTH the source and destination symbols of
+        the pair, so direction alone cannot identify the origin. Instead, each
+        destination symbol's own schema location gives the continuation sheet, and
+        any candidate position on that sheet is excluded.
+
+        Detection uses e3Connection.GetReferenceSymbolIds (the "jump" symbols on
+        the net), e3Symbol.GetSheetReferenceInfo (``inout``: 1=Source, 2=Destination,
+        3=both), and e3Symbol.GetSchemaLocation (the symbol's sheet). Errors are
+        swallowed so numbering is never blocked.
+        """
+        destination_sheet_ids = set()
+
+        for connection_id in connection_ids:
+            try:
+                self.connection.SetId(connection_id)
+                ref_symbol_ids = self._unpack_id_tuple(self.connection.GetReferenceSymbolIds())
+
+                for sym_id in ref_symbol_ids:
+                    try:
+                        self.symbol.SetId(sym_id)
+
+                        # Defensive guard: only reference (28) / arrow (1) symbols.
+                        if self.symbol.GetSymbolType() not in (1, 28):
+                            continue
+
+                        ref_info = self.symbol.GetSheetReferenceInfo()
+                        # Expected shape: (retval, inout, type, refnam, signam)
+                        if not isinstance(ref_info, tuple) or len(ref_info) < 2:
+                            self.logger.debug(f"Unexpected GetSheetReferenceInfo result for symbol {sym_id}: {ref_info}")
+                            continue
+
+                        retval, inout = ref_info[0], ref_info[1]
+                        if not retval or inout not in (2, 3):
+                            continue  # not a destination ("to") arrow
+
+                        loc = self.symbol.GetSchemaLocation()
+                        if isinstance(loc, tuple) and len(loc) >= 1 and loc[0] and loc[0] > 0:
+                            destination_sheet_ids.add(loc[0])
+                            self.logger.debug(f"Destination ('to') arrow {sym_id} on sheet {loc[0]} (connection {connection_id})")
+
+                    except Exception as e:
+                        self.logger.debug(f"Error inspecting reference symbol {sym_id} on connection {connection_id}: {e}")
+
+            except Exception as e:
+                self.logger.debug(f"Error reading reference symbols for connection {connection_id}: {e}")
+
+        return destination_sheet_ids
+
     def process_connections(self):
         """Process all connections in the project"""
         try:
@@ -375,8 +541,7 @@ class WireNumberAssigner:
                         self.logger.info(f"Skipping connection {conn_id} - has FixWireName attribute set")
                         continue
 
-                    self.connection.SetId(conn_id)
-                    signal_name = self.connection.GetSignalName()
+                    signal_name = self.get_connection_signal_name(conn_id)
 
                     if signal_name:  # Only process connections with valid signal names
                         signal_connections[signal_name].append(conn_id)
@@ -390,7 +555,7 @@ class WireNumberAssigner:
 
             for signal_name, connection_ids in signal_connections.items():
                 try:
-                    # Collect all wire numbers and positions for this signal
+                    # Collect all wire numbers and positions for this signal.
                     all_wire_data = []
                     all_net_segments = []
 
@@ -403,11 +568,35 @@ class WireNumberAssigner:
                         net_segment_ids = self.get_net_segments_for_connection(conn_id)
                         all_net_segments.extend(net_segment_ids)
 
+                    # Multi-core nets: pick up the shared trunk segments too
+                    all_net_segments.extend(self.get_shared_net_segments(connection_ids, signal_name))
+
                     if all_wire_data:
-                        # Find the wire data with the lowest wire number for this signal
-                        # Use the same sorting logic as get_lowest_wire_number
-                        all_wire_data.sort(key=lambda x: self.wire_number_sort_key(x['wire_number']))
-                        lowest_wire_data = all_wire_data[0]
+                        # NA standards: the wire number must come from the net that
+                        # originated the wire (the source / "from" side). Exclude any
+                        # candidate position on a sheet that carries a destination
+                        # ("to") arrow; what remains is the origin net. Fall back to
+                        # all positions when no clear origin can be identified.
+                        destination_sheet_ids = self.get_destination_sheet_ids(connection_ids)
+                        origin_wire_data = [
+                            wd for wd in all_wire_data
+                            if wd.get('sheet_id') not in destination_sheet_ids
+                        ] if destination_sheet_ids else all_wire_data
+
+                        candidate_wire_data = origin_wire_data if origin_wire_data else all_wire_data
+                        if destination_sheet_ids and not origin_wire_data:
+                            self.logger.debug(f"Signal '{signal_name}' has no origin-side positions; falling back to all positions")
+                        elif destination_sheet_ids:
+                            self.logger.debug(f"Signal '{signal_name}' excluded continuation sheets {destination_sheet_ids} from wire-number selection")
+
+                        # Find the wire data with the lowest wire number for this signal.
+                        # Several of the signal's pins can sit in that same grid cell
+                        # (both sides of a splitter block, a pass-through terminal);
+                        # take the first of them in reading order so the position used
+                        # for suffixing never depends on E3's pin enumeration order.
+                        candidate_wire_data.sort(key=lambda x: (self.wire_number_sort_key(x['wire_number']),
+                                                                self.reading_order_key(x)))
+                        lowest_wire_data = candidate_wire_data[0]
 
                         # Store signal data for later processing
                         signal_data.append({
@@ -431,9 +620,11 @@ class WireNumberAssigner:
             for signal_info in signal_data:
                 wire_number_groups[signal_info['base_wire_number']].append(signal_info)
 
-            # Sort each group by X coordinate (left to right) then Y coordinate (top to bottom)
+            # Sort each group in reading order: left to right, then top to bottom
+            # (E3 y grows upward). Signal name breaks exact ties so the result is
+            # the same on every run.
             for base_wire_number, signals in wire_number_groups.items():
-                signals.sort(key=lambda x: (x['x_coord'], x['y_coord']))
+                signals.sort(key=lambda x: (self.reading_order_key(x), self._natural_key(x['signal_name'])))
 
             # Third pass: assign unique wire numbers to each signal
             updated_count = 0
@@ -502,6 +693,7 @@ class WireNumberAssigner:
             self.signal = None
             self.net = None
             self.net_segment = None
+            self.symbol = None
             # Uninitialize COM
             try:
                 pythoncom.CoUninitialize()
